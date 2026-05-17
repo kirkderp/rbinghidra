@@ -1,0 +1,34 @@
+[package]
+name = "rbm-ghidra"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Ghidra headless backend: analyzeHeadless subprocess driver and ghidra decompiler tools"
+publish = false
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+rbm-core.workspace = true
+tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread", "time", "process", "fs"] }
+dashmap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread", "time", "fs"] }
+
+[features]
+default = []
+integration-ghidra = []
+
+[lints]
+workspace = true
