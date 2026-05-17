@@ -8,9 +8,9 @@ use thiserror::Error;
 use tokio::sync::OwnedMutexGuard;
 
 use crate::project::{
-    EXTRACT_FUNCTIONS_SCRIPT, HeadlessRunner, ImportSpec, PathValidationError, ProjectError,
-    ProjectManager, cache_key, estimate_eta_ms, hash_file, project_name_for,
-    stage_script_for_headless, validate_ghidra_environment,
+    EXTRACT_FUNCTIONS_SCRIPT, HeadlessOutcome, HeadlessRunner, IMPORT_ERROR_FILE, ImportSpec,
+    PathValidationError, ProjectError, ProjectManager, cache_key, estimate_eta_ms, hash_file,
+    project_name_for, stage_script_for_headless, validate_ghidra_environment,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -23,6 +23,8 @@ pub struct ImportReport {
     pub eta_ms: u64,
     pub started: bool,
     pub next_action: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -31,6 +33,15 @@ struct ExtractFunctionsEnvelope {
     schema: String,
     #[serde(default)]
     program_name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ImportFailureEnvelope {
+    schema: String,
+    error: String,
+    exit_code: Option<i32>,
+    stderr: String,
+    stdout: String,
 }
 
 #[derive(Debug, Error)]
@@ -76,6 +87,78 @@ pub struct ImportOptions {
     pub loader_base_addr: Option<String>,
 }
 
+impl ImportOptions {
+    fn has_explicit_loader_options(&self) -> bool {
+        self.loader.as_ref().is_some_and(|s| !s.trim().is_empty())
+            || self
+                .processor
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty())
+            || self.cspec.as_ref().is_some_and(|s| !s.trim().is_empty())
+            || self
+                .loader_base_addr
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty())
+    }
+}
+
+impl ImportReport {
+    fn analyzing(
+        key: String,
+        binary_name: String,
+        project_dir: &Path,
+        output_path: &Path,
+        eta_ms: u64,
+        started: bool,
+    ) -> Self {
+        Self {
+            status: "analyzing".to_string(),
+            cache_key: key,
+            binary_name,
+            project_dir: project_dir.display().to_string(),
+            output_path: output_path.display().to_string(),
+            eta_ms,
+            started,
+            next_action: "Call ghidra_import again with the same binary_path until status is ready; then use cache_key or binary_name with RE tools.".to_string(),
+            error: None,
+        }
+    }
+
+    fn ready(key: String, binary_name: String, project_dir: &Path, output_path: &Path) -> Self {
+        Self {
+            status: "ready".to_string(),
+            cache_key: key,
+            binary_name,
+            project_dir: project_dir.display().to_string(),
+            output_path: output_path.display().to_string(),
+            eta_ms: 0,
+            started: false,
+            next_action: "Use cache_key or binary_name with RE tools.".to_string(),
+            error: None,
+        }
+    }
+
+    fn failed(
+        key: String,
+        binary_name: String,
+        project_dir: &Path,
+        output_path: &Path,
+        error: String,
+    ) -> Self {
+        Self {
+            status: "failed".to_string(),
+            cache_key: key,
+            binary_name,
+            project_dir: project_dir.display().to_string(),
+            output_path: output_path.display().to_string(),
+            eta_ms: 0,
+            started: false,
+            next_action: "Import failed. Use ghidra_import with explicit loader/processor options for raw data, or choose a recognized executable format.".to_string(),
+            error: Some(error),
+        }
+    }
+}
+
 /// Import a binary into the Ghidra project cache with default options.
 ///
 /// # Errors
@@ -114,6 +197,7 @@ pub async fn import_binary_with_options(
     let sha256_hex = hash_file(binary_path).await?;
     let project_dir = ctx.manager.project_dir(&sha256_hex);
     let output_path = ctx.manager.output_path(&sha256_hex);
+    let error_path = project_dir.join(IMPORT_ERROR_FILE);
     let key = cache_key(&sha256_hex);
     let binary_name = binary_path
         .file_name()
@@ -124,29 +208,36 @@ pub async fn import_binary_with_options(
     if cached_output_is_ready(&output_path).await? {
         let lock = ctx.manager.lock_for(&sha256_hex);
         if lock.try_lock_owned().is_err() {
-            return Ok(ImportReport {
-                status: "analyzing".to_string(),
-                cache_key: key,
+            return Ok(ImportReport::analyzing(
+                key,
                 binary_name,
-                project_dir: project_dir.display().to_string(),
-                output_path: output_path.display().to_string(),
-                eta_ms: estimate_eta_ms(file_size),
-                started: false,
-                next_action: "Call ghidra_import again with the same binary_path until status is ready; then use cache_key or binary_name with RE tools.".to_string(),
-            });
+                &project_dir,
+                &output_path,
+                estimate_eta_ms(file_size),
+                false,
+            ));
         }
-        return Ok(ImportReport {
-            status: "ready".to_string(),
-            cache_key: key,
+        return Ok(ImportReport::ready(
+            key,
             binary_name,
-            project_dir: project_dir.display().to_string(),
-            output_path: output_path.display().to_string(),
-            eta_ms: 0,
-            started: false,
-            next_action: "Use cache_key or binary_name with RE tools.".to_string(),
-        });
+            &project_dir,
+            &output_path,
+        ));
+    }
+
+    if !options.has_explicit_loader_options() {
+        if let Some(failure) = read_import_failure(&error_path).await? {
+            return Ok(ImportReport::failed(
+                key,
+                binary_name,
+                &project_dir,
+                &output_path,
+                failure.error,
+            ));
+        }
     }
     remove_stale_output(&output_path).await?;
+    remove_import_failure(&error_path).await?;
 
     tokio::fs::create_dir_all(&project_dir)
         .await
@@ -156,16 +247,14 @@ pub async fn import_binary_with_options(
     let lock = ctx.manager.lock_for(&sha256_hex);
 
     match lock.try_lock_owned() {
-        Err(_) => Ok(ImportReport {
-            status: "analyzing".to_string(),
-            cache_key: key,
+        Err(_) => Ok(ImportReport::analyzing(
+            key,
             binary_name,
-            project_dir: project_dir.display().to_string(),
-            output_path: output_path.display().to_string(),
-            eta_ms: estimate,
-            started: false,
-            next_action: "Call ghidra_import again with the same binary_path until status is ready; then use cache_key or binary_name with RE tools.".to_string(),
-        }),
+            &project_dir,
+            &output_path,
+            estimate,
+            false,
+        )),
         Ok(guard) => {
             // Re-check after lock acquisition: a concurrent task may have just
             // released the lock between the existence check above and this
@@ -173,18 +262,15 @@ pub async fn import_binary_with_options(
             // spawn a wasted analyzeHeadless run on the already-cached project.
             if cached_output_is_ready(&output_path).await? {
                 drop(guard);
-                return Ok(ImportReport {
-                    status: "ready".to_string(),
-                    cache_key: key,
+                return Ok(ImportReport::ready(
+                    key,
                     binary_name,
-                    project_dir: project_dir.display().to_string(),
-                    output_path: output_path.display().to_string(),
-                    eta_ms: 0,
-                    started: false,
-                    next_action: "Use cache_key or binary_name with RE tools.".to_string(),
-                });
+                    &project_dir,
+                    &output_path,
+                ));
             }
             remove_stale_output(&output_path).await?;
+            remove_import_failure(&error_path).await?;
             let runtime_scripts_dir = ctx.manager.runtime_scripts_dir();
             stage_script_for_headless(
                 &runtime_scripts_dir,
@@ -208,17 +294,15 @@ pub async fn import_binary_with_options(
                 analyze_headless: ctx.analyze_headless.clone(),
                 timeout: ctx.timeout,
             };
-            spawn_import_task(guard, runner, spec);
-            Ok(ImportReport {
-                status: "analyzing".to_string(),
-                cache_key: key,
+            spawn_import_task(guard, runner, spec, output_path.clone(), error_path);
+            Ok(ImportReport::analyzing(
+                key,
                 binary_name,
-                project_dir: project_dir.display().to_string(),
-                output_path: output_path.display().to_string(),
-                eta_ms: estimate,
-                started: true,
-                next_action: "Call ghidra_import again with the same binary_path until status is ready; then use cache_key or binary_name with RE tools.".to_string(),
-            })
+                &project_dir,
+                &output_path,
+                estimate,
+                true,
+            ))
         }
     }
 }
@@ -245,15 +329,91 @@ async fn remove_stale_output(output_path: &Path) -> Result<(), ImportError> {
     }
 }
 
-fn spawn_import_task(guard: OwnedMutexGuard<()>, runner: HeadlessRunner, spec: ImportSpec) {
+async fn read_import_failure(
+    error_path: &Path,
+) -> Result<Option<ImportFailureEnvelope>, ImportError> {
+    match tokio::fs::read(error_path).await {
+        Ok(bytes) => match serde_json::from_slice::<ImportFailureEnvelope>(&bytes) {
+            Ok(envelope) if envelope.schema == "rbm.ghidra.import_failure.v0" => Ok(Some(envelope)),
+            _ => Ok(None),
+        },
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(ImportError::io(error_path, err)),
+    }
+}
+
+async fn remove_import_failure(error_path: &Path) -> Result<(), ImportError> {
+    match tokio::fs::remove_file(error_path).await {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(ImportError::io(error_path, err)),
+    }
+}
+
+async fn write_import_failure(
+    error_path: &Path,
+    error: String,
+    outcome: Option<&HeadlessOutcome>,
+) -> Result<(), ImportError> {
+    let envelope = ImportFailureEnvelope {
+        schema: "rbm.ghidra.import_failure.v0".to_string(),
+        error,
+        exit_code: outcome.and_then(|o| o.exit_code),
+        stderr: outcome.map_or_else(String::new, |o| o.stderr.clone()),
+        stdout: outcome.map_or_else(String::new, |o| o.stdout.clone()),
+    };
+    if let Some(parent) = error_path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| ImportError::io(parent, e))?;
+    }
+    let json = serde_json::to_vec_pretty(&envelope)
+        .map_err(|e| ImportError::io(error_path, std::io::Error::other(e)))?;
+    tokio::fs::write(error_path, json)
+        .await
+        .map_err(|e| ImportError::io(error_path, e))
+}
+
+fn spawn_import_task(
+    guard: OwnedMutexGuard<()>,
+    runner: HeadlessRunner,
+    spec: ImportSpec,
+    output_path: PathBuf,
+    error_path: PathBuf,
+) {
     tokio::spawn(async move {
         let _guard = guard;
         let binary = spec.binary.display().to_string();
         match runner.run_import(&spec).await {
-            Ok(outcome) if outcome.success => {
-                tracing::info!(binary = %binary, "ghidra_import: analyzeHeadless completed");
-            }
+            Ok(outcome) if outcome.success => match cached_output_is_ready(&output_path).await {
+                Ok(true) => {
+                    let _ = remove_import_failure(&error_path).await;
+                    tracing::info!(binary = %binary, "ghidra_import: analyzeHeadless completed");
+                }
+                Ok(false) => {
+                    let _ = write_import_failure(
+                            &error_path,
+                            "analyzeHeadless completed but did not produce a valid functions.json envelope".to_string(),
+                            Some(&outcome),
+                        )
+                        .await;
+                    tracing::error!(binary = %binary, "ghidra_import: missing functions output");
+                }
+                Err(err) => {
+                    let _ =
+                        write_import_failure(&error_path, err.to_string(), Some(&outcome)).await;
+                    tracing::error!(binary = %binary, error = %err, "ghidra_import: output check failed");
+                }
+            },
             Ok(outcome) => {
+                let error = format!(
+                    "analyzeHeadless exited non-zero{}",
+                    outcome
+                        .exit_code
+                        .map(|code| format!(" with code {code}"))
+                        .unwrap_or_default()
+                );
+                let _ = write_import_failure(&error_path, error, Some(&outcome)).await;
                 tracing::error!(
                     binary = %binary,
                     exit_code = ?outcome.exit_code,
@@ -262,6 +422,7 @@ fn spawn_import_task(guard: OwnedMutexGuard<()>, runner: HeadlessRunner, spec: I
                 );
             }
             Err(err) => {
+                let _ = write_import_failure(&error_path, err.to_string(), None).await;
                 tracing::error!(binary = %binary, error = %err, "ghidra_import: runner failed");
             }
         }

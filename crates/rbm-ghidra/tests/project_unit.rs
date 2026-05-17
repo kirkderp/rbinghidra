@@ -338,6 +338,7 @@ fn import_report_serializes_to_stable_shape() {
         eta_ms: 12_345,
         started: true,
         next_action: "poll".to_string(),
+        error: None,
     };
     let json: serde_json::Value = serde_json::to_value(&report).unwrap();
     assert_eq!(json["status"], "analyzing");

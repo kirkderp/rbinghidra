@@ -8,9 +8,13 @@ macro_rules! from_warm_path {
             fn from(err: $crate::warm_path::WarmPathError) -> Self {
                 match err {
                     $crate::warm_path::WarmPathError::Inspect(e) => Self::Inspect(e),
-                    $crate::warm_path::WarmPathError::LockHeld { sha256 } => Self::LockHeld { sha256 },
+                    $crate::warm_path::WarmPathError::LockHeld { sha256 } => {
+                        Self::LockHeld { sha256 }
+                    }
                     $crate::warm_path::WarmPathError::PathValidation(e) => Self::PathValidation(e),
-                    $crate::warm_path::WarmPathError::ProjectFileMissing(p) => Self::ProjectFileMissing(p),
+                    $crate::warm_path::WarmPathError::ProjectFileMissing(p) => {
+                        Self::ProjectFileMissing(p)
+                    }
                     $crate::warm_path::WarmPathError::HeadlessFailed { exit_code, stderr } => {
                         Self::HeadlessFailed { exit_code, stderr }
                     }
@@ -18,13 +22,14 @@ macro_rules! from_warm_path {
                         Self::OutputMissing { stdout, stderr }
                     }
                     $crate::warm_path::WarmPathError::Headless(e) => Self::Headless(e),
-                    $crate::warm_path::WarmPathError::Io { path, source } => Self::Io { path, source },
+                    $crate::warm_path::WarmPathError::Io { path, source } => {
+                        Self::Io { path, source }
+                    }
                 }
             }
         }
     };
 }
-
 
 pub mod anti_analysis;
 pub mod behaviors;
@@ -50,8 +55,8 @@ pub mod disassemble;
 pub mod dynamic_dispatch_table;
 pub mod equates;
 pub mod function_checkpoints;
-pub mod function_stats;
 pub mod function_slices;
+pub mod function_stats;
 pub mod health;
 pub mod import;
 pub mod imports_exports;
@@ -160,9 +165,11 @@ pub use function_checkpoints::{
     FunctionCheckpointStackRef, FunctionCheckpointsContext, FunctionCheckpointsError,
     FunctionCheckpointsResult, get_function_checkpoints,
 };
-pub use function_stats::{FunctionStatsContext, FunctionStatsError, FunctionStatsResult, get_function_stats};
 pub use function_slices::{
     FUNCTION_SLICES_SCHEMA, FunctionSlicesContext, FunctionSlicesOptions, get_function_slices,
+};
+pub use function_stats::{
+    FunctionStatsContext, FunctionStatsError, FunctionStatsResult, get_function_stats,
 };
 pub use health::{
     GhidraCapabilities, GhidraHealth, discover_install_dir, is_valid_ghidra_dir, probe, probe_at,
@@ -242,7 +249,7 @@ pub use variables::{
 };
 pub use warm_path::{
     ProjectDiscoveryError, WarmPathError, WarmPathProduct, WarmPathRequest, cleanup_output,
-    discover_project_name, execute_warm_path, extract_gpr_stem, per_call_output_path,
-    sanitize_query_for_filename,
+    discover_program_name, discover_project_name, execute_warm_path, extract_gpr_stem,
+    per_call_output_path, sanitize_query_for_filename,
 };
 pub use xrefs::{XrefEntry, XrefsContext, XrefsError, XrefsResult, list_xrefs};

@@ -10,6 +10,7 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 
 pub const FUNCTIONS_OUTPUT_FILE: &str = "functions.json";
+pub const IMPORT_ERROR_FILE: &str = "import_error.json";
 pub const CODE_INDEX_OUTPUT_FILE: &str = "code_index.json";
 pub const EXTRACT_FUNCTIONS_SCRIPT: &str = "extract_functions.java";
 pub const DECOMPILE_FUNCTION_SCRIPT: &str = "decompile_function.java";
@@ -288,7 +289,6 @@ impl ProjectManager {
     }
 }
 
-
 #[must_use]
 pub fn safe_ghidra_dir_for_headless(requested: &Path) -> PathBuf {
     if !has_hidden_component(requested) {
@@ -305,7 +305,9 @@ fn non_hidden_parent(path: &Path) -> PathBuf {
         use std::path::Component;
         match component {
             Component::Normal(name)
-                if name.to_str().is_some_and(|s| s.len() > 1 && s.starts_with('.')) =>
+                if name
+                    .to_str()
+                    .is_some_and(|s| s.len() > 1 && s.starts_with('.')) =>
             {
                 break;
             }

@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use rbm_core::CachePaths;
 use rbm_ghidra::import::{ImportContext, import_binary};
 use rbm_ghidra::project::{
-    EXTRACT_FUNCTIONS_SCRIPT, FUNCTIONS_OUTPUT_FILE, ProjectManager, hash_file,
+    EXTRACT_FUNCTIONS_SCRIPT, FUNCTIONS_OUTPUT_FILE, IMPORT_ERROR_FILE, ProjectManager, hash_file,
 };
 use tempfile::TempDir;
 
@@ -178,10 +178,18 @@ fn import_binary_failing_runner_does_not_write_output_or_panic() {
         assert_eq!(report.status, "analyzing");
         assert!(report.started);
 
-        // Wait long enough for the failing runner to exit.
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        let error_path = mgr.project_dir(&sha256_hex).join(IMPORT_ERROR_FILE);
+        assert!(
+            wait_for_file(&error_path, Duration::from_secs(5)).await,
+            "failing runner should write {error_path:?}"
+        );
         let output = mgr.output_path(&sha256_hex);
         assert!(!output.exists(), "failing runner should not write output");
+
+        let failed = import_binary(&ctx, &bin).await.unwrap();
+        assert_eq!(failed.status, "failed");
+        assert!(!failed.started);
+        assert!(failed.error.as_deref().unwrap_or("").contains("non-zero"));
     });
 }
 

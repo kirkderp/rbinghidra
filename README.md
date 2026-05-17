@@ -32,7 +32,7 @@ MCP server for Ghidra-based binary analysis.
 - `ghidra_pcode`  -  P-code extraction
 
 **Analysis**
-- `ghidra_behaviors`  -  behavioral threat pattern scanning (16 API co-occurrence patterns)
+- `ghidra_behaviors`  -  behavioral threat pattern scanning with API and string evidence
 - `ghidra_anti_analysis`  -  anti-debug, anti-VM, timing check, PEB access detection
 - `ghidra_function_checkpoints`  -  deferred P-code checkpoints with stack delta analysis
 

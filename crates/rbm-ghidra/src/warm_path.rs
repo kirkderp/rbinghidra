@@ -92,6 +92,37 @@ pub async fn discover_project_name(project_dir: &Path) -> Result<String, Project
         .ok_or_else(|| ProjectDiscoveryError::ProjectFileMissing(project_dir.to_path_buf()))
 }
 
+pub async fn discover_program_name(project_dir: &Path, preferred: &str) -> String {
+    let idata_index = project_dir
+        .join(format!("{preferred}.rep"))
+        .join("idata")
+        .join("~index.dat");
+    let Ok(bytes) = tokio::fs::read(&idata_index).await else {
+        return preferred.to_string();
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    let names: Vec<&str> = text.lines().filter_map(index_line_program_name).collect();
+    if names.iter().any(|name| *name == preferred) {
+        return preferred.to_string();
+    }
+    if let Some(name) = names.iter().find(|name| name.starts_with(preferred)) {
+        return (*name).to_string();
+    }
+    names
+        .first()
+        .map_or_else(|| preferred.to_string(), |name| (*name).to_string())
+}
+
+fn index_line_program_name(line: &str) -> Option<&str> {
+    let trimmed = line.trim();
+    let (id, rest) = trimmed.split_once(':')?;
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    let (name, _) = rest.rsplit_once(':')?;
+    if name.is_empty() { None } else { Some(name) }
+}
+
 #[must_use]
 pub fn extract_gpr_stem(entries: &[String]) -> Option<String> {
     entries.iter().find_map(|name| {
@@ -183,6 +214,7 @@ pub async fn execute_warm_path(req: WarmPathRequest<'_>) -> Result<WarmPathProdu
     })?;
 
     let project_name = discover_project_name(&project_dir).await?;
+    let program_name = discover_program_name(&project_dir, &project_name).await;
     let output_path = per_call_output_path(&project_dir, req.output_prefix, req.output_key);
 
     let mut script_args = Vec::with_capacity(1 + req.extra_script_args.len());
@@ -191,8 +223,8 @@ pub async fn execute_warm_path(req: WarmPathRequest<'_>) -> Result<WarmPathProdu
 
     let spec = ProcessSpec {
         project_dir: project_dir.clone(),
-        project_name,
-        program_name: cached.program_name.clone(),
+        project_name: project_name.clone(),
+        program_name,
         script_dir: runtime_scripts_dir,
         script_name: req.script_name.to_string(),
         script_args,

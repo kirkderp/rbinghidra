@@ -8,6 +8,7 @@
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import ghidra.app.script.GhidraScript;
+import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionIterator;
 import ghidra.program.model.listing.FunctionManager;
@@ -20,6 +21,7 @@ import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolTable;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,6 +31,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -158,6 +161,25 @@ public class behaviors extends GhidraScript {
         return SEV_LOW;
     }
 
+    private static boolean apiMatches(String actualApi, String patternApi) {
+        String actual = actualApi.toLowerCase();
+        String pattern = patternApi.toLowerCase();
+        if (actual.equals(pattern)) {
+            return true;
+        }
+        if (!actual.startsWith(pattern)) {
+            return false;
+        }
+        String suffix = actual.substring(pattern.length());
+        return suffix.equals("a")
+            || suffix.equals("w")
+            || suffix.equals("ex")
+            || suffix.equals("exa")
+            || suffix.equals("exw")
+            || suffix.equals("2a")
+            || suffix.equals("2w");
+    }
+
     @Override
     public void run() throws Exception {
         String[] args = getScriptArgs();
@@ -267,15 +289,17 @@ public class behaviors extends GhidraScript {
             for (ThreatPattern pattern : PATTERNS) {
                 List<String> matchedApis = new ArrayList<>();
                 for (String patternApi : pattern.apis) {
-                    String patternLc = patternApi.toLowerCase();
                     for (String funcApi : apiSet) {
-                        if (funcApi.toLowerCase().contains(patternLc)) {
+                        if (apiMatches(funcApi, patternApi)) {
                             matchedApis.add(funcApi);
                             break;
                         }
                     }
                 }
                 int matchCount = matchedApis.size();
+                if ("ransomware_pattern".equals(pattern.id) && !matchedApis.contains("CryptEncrypt")) {
+                    continue;
+                }
                 int threshold = (int) Math.ceil(pattern.apis.length / 2.0);
                 if (matchCount >= threshold && matchCount >= 2) {
                     double confidence = (double) matchCount / pattern.apis.length;
@@ -294,6 +318,7 @@ public class behaviors extends GhidraScript {
                 }
             }
         }
+        detected.addAll(detectStringEvidence());
 
         Collections.sort(detected, new Comparator<Map<String, Object>>() {
             @Override
@@ -333,6 +358,146 @@ public class behaviors extends GhidraScript {
 
         writeOutput(outputPath, envelope);
         println("[behaviors] total_detected=" + total + ", truncated=" + truncated + " -> " + outputPath);
+    }
+
+    private List<Map<String, Object>> detectStringEvidence() {
+        List<StringHit> hits = collectStringHits();
+        List<Map<String, Object>> behaviors = new ArrayList<>();
+        addStringEvidenceBehavior(behaviors, hits,
+            "ransomware_string_evidence",
+            "Ransomware Operator Strings",
+            "critical",
+            new String[]{
+                "your files have been encrypted",
+                "files encrypted",
+                "encryptor threads",
+                "scanner threads",
+                "!!!_read_me_!!!",
+                "force-safemode"
+            },
+            "Embedded strings indicate ransomware execution flow, encryption status, and operator options");
+        addStringEvidenceBehavior(behaviors, hits,
+            "lateral_movement_string_evidence",
+            "Lateral Movement Strings",
+            "high",
+            new String[]{
+                "schtasks /create",
+                "win32_process",
+                "cmdkey /generic",
+                "sc.exe \\\\",
+                "invoke-cimmethod",
+                "invoke-wmimethod",
+                "\\\\$pc\\c",
+                "programdata\\$name"
+            },
+            "Embedded strings indicate remote copy and execution through WMI, scheduled tasks, services, or admin shares");
+        return behaviors;
+    }
+
+    private List<StringHit> collectStringHits() {
+        List<StringHit> hits = new ArrayList<>();
+        Iterator<Data> dataIterator;
+        try {
+            dataIterator = openDefinedStringIterator();
+        } catch (Exception e) {
+            printerr("[behaviors] string iterator unavailable: " + e.getMessage());
+            return hits;
+        }
+        while (dataIterator.hasNext()) {
+            Data data;
+            try {
+                data = dataIterator.next();
+                if (data == null || data.getValue() == null) {
+                    continue;
+                }
+                String value = data.getValue().toString();
+                hits.add(new StringHit(
+                    data.getAddress() != null ? data.getAddress().toString() : "",
+                    value,
+                    value.toLowerCase()
+                ));
+            } catch (Exception e) {
+                printerr("[behaviors] string evidence scan error: " + e.getMessage());
+            }
+        }
+        return hits;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Iterator<Data> openDefinedStringIterator() throws Exception {
+        try {
+            Class<?> iterClass = Class.forName("ghidra.program.util.DefinedStringIterator");
+            Method forProgram = iterClass.getMethod("forProgram", ghidra.program.model.listing.Program.class);
+            Object iter = forProgram.invoke(null, currentProgram);
+            return (Iterator<Data>) iter;
+        } catch (ClassNotFoundException | NoSuchMethodException e) {
+            Class<?> iterClass = Class.forName("ghidra.program.util.DefinedDataIterator");
+            Method definedStrings = iterClass.getMethod("definedStrings", ghidra.program.model.listing.Program.class);
+            Object iter = definedStrings.invoke(null, currentProgram);
+            return (Iterator<Data>) iter;
+        }
+    }
+
+    private void addStringEvidenceBehavior(List<Map<String, Object>> behaviors, List<StringHit> hits,
+            String patternId, String patternName, String severity, String[] needles, String description) {
+        List<String> matchedEvidence = new ArrayList<>();
+        String firstAddress = "";
+        Set<String> matchedNeedles = new HashSet<>();
+        Set<String> emittedEvidence = new HashSet<>();
+        for (String needle : needles) {
+            String normalizedNeedle = needle.toLowerCase();
+            for (StringHit hit : hits) {
+                if (!hit.normalized.contains(normalizedNeedle)) {
+                    continue;
+                }
+                matchedNeedles.add(normalizedNeedle);
+                String evidence = hit.address + ": " + truncate(hit.value, 120);
+                if (emittedEvidence.add(evidence)) {
+                    matchedEvidence.add(evidence);
+                }
+                if (firstAddress.isEmpty()) {
+                    firstAddress = hit.address;
+                }
+                break;
+            }
+        }
+        int threshold = Math.max(2, (int) Math.ceil(needles.length / 3.0));
+        if (matchedNeedles.size() < threshold) {
+            return;
+        }
+        double confidence = (double) matchedNeedles.size() / needles.length;
+        confidence = Math.round(confidence * 100.0) / 100.0;
+
+        Map<String, Object> behavior = new LinkedHashMap<>();
+        behavior.put("pattern_id", patternId);
+        behavior.put("pattern_name", patternName);
+        behavior.put("severity", severity);
+        behavior.put("function", "");
+        behavior.put("address", firstAddress);
+        behavior.put("confidence", confidence);
+        behavior.put("matched_apis", new ArrayList<String>());
+        behavior.put("matched_evidence", matchedEvidence);
+        behavior.put("description", description);
+        behaviors.add(behavior);
+    }
+
+    private String truncate(String value, int maxLen) {
+        if (value.length() <= maxLen) {
+            return value;
+        }
+        return value.substring(0, maxLen - 3) + "...";
+    }
+
+    private static class StringHit {
+        final String address;
+        final String value;
+        final String normalized;
+
+        StringHit(String address, String value, String normalized) {
+            this.address = address;
+            this.value = value;
+            this.normalized = normalized;
+        }
     }
 
     private void writeOutput(String outputPath, Map<String, Object> envelope) throws IOException {
