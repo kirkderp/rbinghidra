@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::project::{CODE_INDEX_OUTPUT_FILE, ProjectManager, cache_key};
+use crate::project::{ProjectManager, cache_key};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CachedBinary {
@@ -16,8 +16,6 @@ pub struct CachedBinary {
     pub error_count: u64,
     pub project_dir: String,
     pub output_path: String,
-    pub code_index_path: String,
-    pub code_index_present: bool,
     pub last_modified_unix: Option<i64>,
 }
 
@@ -214,16 +212,14 @@ pub async fn read_cached_binary(
     {
         return Ok(None);
     }
-    let bytes = tokio::fs::read(&output_path)
-        .await
-        .map_err(|e| InspectError::io(&output_path, e))?;
+    let bytes = match tokio::fs::read(&output_path).await {
+        Ok(bytes) => bytes,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(InspectError::io(&output_path, err)),
+    };
     let header: EnvelopeHeader =
         serde_json::from_slice(&bytes).map_err(|e| InspectError::parse(&output_path, e))?;
     let last_modified_unix = file_mtime_unix(&output_path).await;
-    let code_index_path = project_dir.join(CODE_INDEX_OUTPUT_FILE);
-    let code_index_present = tokio::fs::try_exists(&code_index_path)
-        .await
-        .map_err(|e| InspectError::io(&code_index_path, e))?;
     Ok(Some(CachedBinary {
         cache_key: cache_key(sha256_hex),
         sha256: sha256_hex.to_string(),
@@ -234,8 +230,6 @@ pub async fn read_cached_binary(
         error_count: header.error_count,
         project_dir: project_dir.display().to_string(),
         output_path: output_path.display().to_string(),
-        code_index_path: code_index_path.display().to_string(),
-        code_index_present,
         last_modified_unix,
     }))
 }

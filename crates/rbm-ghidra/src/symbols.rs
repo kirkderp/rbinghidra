@@ -39,6 +39,7 @@ pub struct SymbolsResult {
     pub offset: u64,
     pub limit: u64,
     pub total_matched: u64,
+    pub truncated: bool,
     pub error_count: u64,
     pub symbols: Vec<SymbolEntry>,
 }
@@ -80,11 +81,9 @@ pub enum SymbolsError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(SymbolsError);
-
 
 #[derive(Debug, Clone)]
 pub struct SymbolsContext {
@@ -106,6 +105,8 @@ struct SymbolsEnvelope {
     limit: u64,
     #[serde(default)]
     total_matched: u64,
+    #[serde(default)]
+    truncated: bool,
     #[serde(default)]
     error_count: u64,
     #[serde(default)]
@@ -169,6 +170,8 @@ pub async fn search_symbols(
         offset: envelope.offset,
         limit: envelope.limit,
         total_matched: envelope.total_matched,
+        truncated: envelope.truncated
+            || envelope.total_matched > envelope.offset.saturating_add(envelope.limit),
         error_count: envelope.error_count,
         symbols: envelope.symbols,
     })

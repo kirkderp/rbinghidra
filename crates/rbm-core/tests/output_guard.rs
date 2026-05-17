@@ -29,7 +29,7 @@ fn overflow_writes_file_with_preview_and_summary() {
     let guard = OutputGuard::new(dir.path()).with_max_inline_chars(10);
     let payload = "x".repeat(1_000);
 
-    let result = guard.guard_str("r2_cmd", &payload).unwrap();
+    let result = guard.guard_str("ghidra_decompile", &payload).unwrap();
     let summary = match result {
         GuardedOutput::Overflow(s) => s,
         GuardedOutput::Inline(_) => panic!("expected overflow"),
@@ -47,7 +47,7 @@ fn overflow_writes_file_with_preview_and_summary() {
         .and_then(|s| s.to_str())
         .unwrap();
     assert!(stem.starts_with(OVERFLOW_PREFIX));
-    assert!(stem.contains("r2_cmd"));
+    assert!(stem.contains("ghidra_decompile"));
 
     let disk = fs::read_to_string(&summary.file_path).unwrap();
     assert_eq!(disk.len(), 1_000);
@@ -146,7 +146,7 @@ fn guard_json_serializes_and_overflows_large_values() {
 fn inline_serializes_as_bare_json_string() {
     let dir = tempdir().unwrap();
     let guard = OutputGuard::new(dir.path()).with_max_inline_chars(100);
-    let result = guard.guard_str("r2_cmd", "0x401000").unwrap();
+    let result = guard.guard_str("ghidra_read_bytes", "0x401000").unwrap();
     let json = serde_json::to_string(&result).unwrap();
     assert_eq!(
         json, "\"0x401000\"",
@@ -158,7 +158,7 @@ fn inline_serializes_as_bare_json_string() {
 fn overflow_serializes_as_object_with_overflow_flag() {
     let dir = tempdir().unwrap();
     let guard = OutputGuard::new(dir.path()).with_max_inline_chars(4);
-    let result = guard.guard_str("r2_cmd", "abcdefghij").unwrap();
+    let result = guard.guard_str("ghidra_read_bytes", "abcdefghij").unwrap();
     let json = serde_json::to_string(&result).unwrap();
     let value: serde_json::Value = serde_json::from_str(&json).unwrap();
     let obj = value

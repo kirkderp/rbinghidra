@@ -81,11 +81,9 @@ pub enum CfgError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(CfgError);
-
 
 #[derive(Debug, Clone)]
 pub struct CfgContext {

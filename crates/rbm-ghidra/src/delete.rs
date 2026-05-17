@@ -3,11 +3,14 @@ use std::path::PathBuf;
 use serde::Serialize;
 use thiserror::Error;
 
-use crate::inspect::{InspectError, get_cached_metadata};
-use crate::project::ProjectManager;
+use crate::inspect::{InspectError, get_cached_metadata, parse_sha256_lookup};
+use crate::project::{ProjectManager, cache_key};
+
+pub const DELETE_SCHEMA: &str = "rbm.ghidra.delete.v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DeleteReport {
+    pub schema: &'static str,
     pub cache_key: String,
     pub sha256: String,
     pub program_name: String,
@@ -40,7 +43,7 @@ impl DeleteError {
     }
 }
 
-/// Delete cached metadata, project files, and derived indexes for a binary.
+/// Delete cached metadata and project files for a binary.
 ///
 /// # Errors
 ///
@@ -50,8 +53,16 @@ pub async fn delete_cached_binary(
     manager: &ProjectManager,
     query: &str,
 ) -> Result<DeleteReport, DeleteError> {
-    let cached = get_cached_metadata(manager, query).await?;
-    let sha256_hex = cached.sha256.clone();
+    let cached = match get_cached_metadata(manager, query).await {
+        Ok(cached) => Some(cached),
+        Err(InspectError::NotFound(_)) => None,
+        Err(err) => return Err(err.into()),
+    };
+    let sha256_hex = cached
+        .as_ref()
+        .map(|cached| cached.sha256.clone())
+        .or_else(|| parse_sha256_lookup(query))
+        .ok_or_else(|| InspectError::NotFound(query.to_string()))?;
     let project_dir = manager.project_dir(&sha256_hex);
 
     let lock = manager.lock_for(&sha256_hex);
@@ -59,18 +70,21 @@ pub async fn delete_cached_binary(
         sha256: sha256_hex.clone(),
     })?;
 
-    let deleted = match tokio::fs::remove_dir_all(&project_dir).await {
+    let remove_result = tokio::fs::remove_dir_all(&project_dir).await;
+    let _ = manager.release_lock(&sha256_hex);
+    let deleted = match remove_result {
         Ok(()) => true,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
         Err(err) => return Err(DeleteError::io(&project_dir, err)),
     };
 
-    let _ = manager.release_lock(&sha256_hex);
-
     Ok(DeleteReport {
-        cache_key: cached.cache_key,
-        sha256: cached.sha256,
-        program_name: cached.program_name,
+        schema: DELETE_SCHEMA,
+        cache_key: cached
+            .as_ref()
+            .map_or_else(|| cache_key(&sha256_hex), |cached| cached.cache_key.clone()),
+        sha256: sha256_hex,
+        program_name: cached.map_or_else(String::new, |cached| cached.program_name),
         project_dir: project_dir.display().to_string(),
         deleted,
     })

@@ -94,11 +94,9 @@ pub enum PcodeError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(PcodeError);
-
 
 #[derive(Debug, Clone)]
 pub struct PcodeContext {

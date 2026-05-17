@@ -1,7 +1,7 @@
 // List defined strings in the currently loaded program and write a JSON envelope to the path passed as the first script argument.
 // Usage: <output_path> [query] [offset] [limit]
 // query is a Java regex applied case-insensitively as a partial match (Pattern.find()) against the string value, default ".*".
-// Uses DefinedStringIterator.forProgram when available (Ghidra 11.2) with a fallback to DefinedDataIterator.definedStrings (Ghidra 11.3+).
+// Uses the string iterator available in the active Ghidra runtime.
 // @category rbinghidra
 
 import com.google.gson.Gson;
@@ -172,19 +172,19 @@ public class search_strings extends GhidraScript {
         return entry;
     }
 
-    private long parseLong(String[] args, int index, long fallback) {
+    private long parseLong(String[] args, int index, long defaultValue) {
         if (index >= args.length) {
-            return fallback;
+            return defaultValue;
         }
         String raw = args[index];
         if (raw == null || raw.isEmpty()) {
-            return fallback;
+            return defaultValue;
         }
         try {
             return Long.parseLong(raw);
         } catch (NumberFormatException e) {
-            printerr("[search_strings] could not parse '" + raw + "' as long; using default " + fallback);
-            return fallback;
+            printerr("[search_strings] could not parse '" + raw + "' as long; using default " + defaultValue);
+            return defaultValue;
         }
     }
 

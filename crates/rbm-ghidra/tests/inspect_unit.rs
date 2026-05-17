@@ -4,7 +4,7 @@ use rbm_ghidra::inspect::{
     CachedBinary, InspectError, get_cached_metadata, is_sha256_hex, list_cached_binaries,
     parse_sha256_lookup, read_cached_binary,
 };
-use rbm_ghidra::project::{CODE_INDEX_OUTPUT_FILE, FUNCTIONS_OUTPUT_FILE, ProjectManager};
+use rbm_ghidra::project::{FUNCTIONS_OUTPUT_FILE, ProjectManager};
 
 mod common;
 use common::{make_manager, make_runtime, write_envelope};
@@ -82,12 +82,6 @@ fn list_cached_binaries_returns_only_completed_projects() {
         let names: Vec<&str> = result.iter().map(|c| c.program_name.as_str()).collect();
         assert_eq!(names, vec!["cat", "ls"]);
         assert!(result.iter().all(|c| c.cache_key.starts_with("sha256:")));
-        assert!(
-            result
-                .iter()
-                .all(|c| c.code_index_path.ends_with(CODE_INDEX_OUTPUT_FILE))
-        );
-        assert!(result.iter().all(|c| !c.code_index_present));
         assert!(result.iter().all(|c| c.last_modified_unix.is_some()));
     });
 }
@@ -140,7 +134,6 @@ fn read_cached_binary_parses_envelope_and_populates_paths() {
     rt.block_on(async {
         let (_tmp, mgr) = make_manager();
         write_envelope(&mgr, SHA_LS, "ls", 42);
-        std::fs::write(mgr.project_dir(SHA_LS).join(CODE_INDEX_OUTPUT_FILE), b"{}").unwrap();
         let cached = read_cached_binary(&mgr, SHA_LS).await.unwrap().unwrap();
         assert_eq!(cached.sha256, SHA_LS);
         assert_eq!(cached.cache_key, format!("sha256:{SHA_LS}"));
@@ -150,8 +143,6 @@ fn read_cached_binary_parses_envelope_and_populates_paths() {
         assert_eq!(cached.error_count, 0);
         assert_eq!(cached.schema, "rbm.ghidra.extract_functions.v0");
         assert!(cached.output_path.ends_with(FUNCTIONS_OUTPUT_FILE));
-        assert!(cached.code_index_path.ends_with(CODE_INDEX_OUTPUT_FILE));
-        assert!(cached.code_index_present);
         assert!(cached.project_dir.ends_with(SHA_LS));
     });
 }
@@ -243,8 +234,6 @@ fn cached_binary_serializes_to_stable_shape() {
         error_count: 0,
         project_dir: "/tmp/abc".to_string(),
         output_path: "/tmp/abc/functions.json".to_string(),
-        code_index_path: "/tmp/abc/code_index.json".to_string(),
-        code_index_present: true,
         last_modified_unix: Some(1_700_000_000),
     };
     let json = serde_json::to_value(&cb).unwrap();
@@ -257,7 +246,5 @@ fn cached_binary_serializes_to_stable_shape() {
     assert_eq!(json["error_count"], 0);
     assert_eq!(json["project_dir"], "/tmp/abc");
     assert_eq!(json["output_path"], "/tmp/abc/functions.json");
-    assert_eq!(json["code_index_path"], "/tmp/abc/code_index.json");
-    assert_eq!(json["code_index_present"], true);
     assert_eq!(json["last_modified_unix"], 1_700_000_000);
 }

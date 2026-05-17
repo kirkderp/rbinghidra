@@ -1,6 +1,6 @@
 // Read raw bytes from the currently loaded program and write a JSON envelope to the path passed as the first script argument.
 // Usage: <output_path> <address> [size]
-// address is parsed via AddressFactory.getAddress after stripping a leading "0x"/"0X" prefix, mirroring legacy behaviour.
+// address is parsed via AddressFactory.getAddress after stripping a leading "0x"/"0X" prefix.
 // size defaults to 32, is clamped to the hard cap 8192 (matching pyghidra_mcp). Zero-size reads are permitted.
 // @category rbinghidra
 
@@ -117,19 +117,19 @@ public class read_bytes extends GhidraScript {
         return af.getAddress(stripped);
     }
 
-    private long parseLong(String[] args, int index, long fallback) {
+    private long parseLong(String[] args, int index, long defaultValue) {
         if (index >= args.length) {
-            return fallback;
+            return defaultValue;
         }
         String raw = args[index];
         if (raw == null || raw.isEmpty()) {
-            return fallback;
+            return defaultValue;
         }
         try {
             return Long.parseLong(raw);
         } catch (NumberFormatException e) {
-            printerr("[read_bytes] could not parse '" + raw + "' as long; using default " + fallback);
-            return fallback;
+            printerr("[read_bytes] could not parse '" + raw + "' as long; using default " + defaultValue);
+            return defaultValue;
         }
     }
 

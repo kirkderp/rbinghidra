@@ -83,6 +83,41 @@ fn delete_cached_binary_lookup_by_raw_sha256_works() {
 }
 
 #[test]
+fn delete_cached_binary_lookup_by_sha256_removes_incomplete_project() {
+    let rt = make_runtime();
+    rt.block_on(async {
+        let (_tmp, mgr) = make_manager();
+        let project_dir = mgr.project_dir(SHA_LS);
+        tokio::fs::create_dir_all(&project_dir).await.unwrap();
+
+        let report = delete_cached_binary(&mgr, &format!("sha256:{SHA_LS}"))
+            .await
+            .unwrap();
+        assert_eq!(report.cache_key, format!("sha256:{SHA_LS}"));
+        assert_eq!(report.sha256, SHA_LS);
+        assert_eq!(report.program_name, "");
+        assert!(report.deleted);
+        assert!(!project_dir.exists());
+        assert_eq!(mgr.lock_count(), 0);
+    });
+}
+
+#[test]
+fn delete_cached_binary_lookup_by_sha256_is_idempotent_for_missing_project() {
+    let rt = make_runtime();
+    rt.block_on(async {
+        let (_tmp, mgr) = make_manager();
+
+        let report = delete_cached_binary(&mgr, SHA_LS).await.unwrap();
+        assert_eq!(report.cache_key, format!("sha256:{SHA_LS}"));
+        assert_eq!(report.sha256, SHA_LS);
+        assert_eq!(report.program_name, "");
+        assert!(!report.deleted);
+        assert_eq!(mgr.lock_count(), 0);
+    });
+}
+
+#[test]
 fn delete_cached_binary_lookup_by_program_name_works() {
     let rt = make_runtime();
     rt.block_on(async {
@@ -205,6 +240,7 @@ fn delete_cached_binary_lookup_form_parity_evicts_same_sha() {
 #[test]
 fn delete_report_serializes_to_stable_shape() {
     let report = DeleteReport {
+        schema: "rbm.ghidra.delete.v0",
         cache_key: "sha256:abc".to_string(),
         sha256: "abc".to_string(),
         program_name: "ls".to_string(),
@@ -212,6 +248,7 @@ fn delete_report_serializes_to_stable_shape() {
         deleted: true,
     };
     let json = serde_json::to_value(&report).unwrap();
+    assert_eq!(json["schema"], "rbm.ghidra.delete.v0");
     assert_eq!(json["cache_key"], "sha256:abc");
     assert_eq!(json["sha256"], "abc");
     assert_eq!(json["program_name"], "ls");

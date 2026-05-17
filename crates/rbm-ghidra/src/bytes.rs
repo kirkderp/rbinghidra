@@ -68,11 +68,9 @@ pub enum ReadBytesError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(ReadBytesError);
-
 
 #[derive(Debug, Clone)]
 pub struct ReadBytesContext {

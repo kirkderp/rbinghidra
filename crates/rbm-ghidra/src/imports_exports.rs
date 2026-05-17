@@ -47,6 +47,7 @@ pub struct ExportsResult {
     pub offset: u64,
     pub limit: u64,
     pub total_matched: u64,
+    pub truncated: bool,
     pub error_count: u64,
     pub exports: Vec<ExportEntry>,
 }
@@ -61,6 +62,7 @@ pub struct ImportsResult {
     pub offset: u64,
     pub limit: u64,
     pub total_matched: u64,
+    pub truncated: bool,
     pub error_count: u64,
     pub imports: Vec<ImportEntry>,
 }
@@ -100,11 +102,9 @@ pub enum ImportsExportsError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(ImportsExportsError);
-
 
 #[derive(Debug, Clone)]
 pub struct ImportsExportsContext {
@@ -127,6 +127,8 @@ struct ExportsEnvelope {
     #[serde(default)]
     total_matched: u64,
     #[serde(default)]
+    truncated: bool,
+    #[serde(default)]
     error_count: u64,
     #[serde(default)]
     exports: Vec<ExportEntry>,
@@ -144,6 +146,8 @@ struct ImportsEnvelope {
     limit: u64,
     #[serde(default)]
     total_matched: u64,
+    #[serde(default)]
+    truncated: bool,
     #[serde(default)]
     error_count: u64,
     #[serde(default)]
@@ -222,6 +226,8 @@ pub async fn list_exports(
         offset: envelope.offset,
         limit: envelope.limit,
         total_matched: envelope.total_matched,
+        truncated: envelope.truncated
+            || envelope.total_matched > envelope.offset.saturating_add(envelope.limit),
         error_count: envelope.error_count,
         exports: envelope.exports,
     })
@@ -281,6 +287,8 @@ pub async fn list_imports(
         offset: envelope.offset,
         limit: envelope.limit,
         total_matched: envelope.total_matched,
+        truncated: envelope.truncated
+            || envelope.total_matched > envelope.offset.saturating_add(envelope.limit),
         error_count: envelope.error_count,
         imports: envelope.imports,
     })

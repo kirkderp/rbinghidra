@@ -1220,20 +1220,20 @@ public class path_digest extends GhidraScript {
         }
     }
 
-    private String emptyDefault(String value, String fallback) {
+    private String emptyDefault(String value, String defaultValue) {
         String s = trim(value);
-        return s.isEmpty() ? fallback : s;
+        return s.isEmpty() ? defaultValue : s;
     }
 
     private String trim(String s) {
         return s == null ? "" : s.trim();
     }
 
-    private int parseInt(String s, int fallback) {
+    private int parseInt(String s, int defaultValue) {
         try {
             return Integer.parseInt(trim(s));
         } catch (NumberFormatException ignored) {
-            return fallback;
+            return defaultValue;
         }
     }
 

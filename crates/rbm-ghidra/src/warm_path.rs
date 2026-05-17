@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
 
-use crate::inspect::{InspectError, get_cached_metadata};
+use crate::inspect::{InspectError, get_cached_metadata, read_cached_binary};
 use crate::project::{
     HeadlessError, HeadlessRunner, PathValidationError, ProcessSpec, ProjectManager,
     stage_script_for_headless, validate_ghidra_environment,
@@ -163,7 +163,7 @@ pub async fn cleanup_output(path: &Path) {
     if let Err(err) = tokio::fs::remove_file(path).await
         && err.kind() != std::io::ErrorKind::NotFound
     {
-        tracing::debug!(
+        tracing::warn!(
             path = %path.display(),
             error = %err,
             "ghidra: best-effort cleanup of per-call output failed"
@@ -197,8 +197,8 @@ pub struct WarmPathProduct {
 /// # Errors
 ///
 /// Returns an error if the Ghidra environment is invalid, the binary cannot be
-/// resolved, the project is locked, headless execution fails, or the expected
-/// output file cannot be found or read.
+/// resolved, the project lock cannot be acquired before timeout, headless
+/// execution fails, or the expected output file cannot be found or read.
 pub async fn execute_warm_path(req: WarmPathRequest<'_>) -> Result<WarmPathProduct, WarmPathError> {
     validate_ghidra_environment(req.scripts_dir, req.script_name, req.analyze_headless).await?;
     let runtime_scripts_dir = req.manager.runtime_scripts_dir();
@@ -209,9 +209,14 @@ pub async fn execute_warm_path(req: WarmPathRequest<'_>) -> Result<WarmPathProdu
     let project_dir = req.manager.project_dir(&sha256_hex);
 
     let lock = req.manager.lock_for(&sha256_hex);
-    let _guard = lock.try_lock_owned().map_err(|_| WarmPathError::LockHeld {
-        sha256: sha256_hex.clone(),
-    })?;
+    let _guard = tokio::time::timeout(req.timeout, lock.lock_owned())
+        .await
+        .map_err(|_| WarmPathError::LockHeld {
+            sha256: sha256_hex.clone(),
+        })?;
+    let cached = read_cached_binary(req.manager, &sha256_hex)
+        .await?
+        .ok_or_else(|| InspectError::NotFound(req.binary_query.to_string()))?;
 
     let project_name = discover_project_name(&project_dir).await?;
     let program_name = discover_program_name(&project_dir, &project_name).await;

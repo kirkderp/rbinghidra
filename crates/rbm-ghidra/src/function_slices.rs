@@ -67,8 +67,8 @@ pub async fn get_function_slices(
             options.mode.trim()
         }
         other => {
-            return Err(DecompilerCfgError::InvalidSimplificationStyle {
-                style: other.to_string(),
+            return Err(DecompilerCfgError::InvalidFunctionSlicesMode {
+                mode: other.to_string(),
             });
         }
     };

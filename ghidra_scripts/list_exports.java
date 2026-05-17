@@ -1,6 +1,6 @@
 // List exported symbols (entry points exposed by this binary) and write a JSON envelope to the path passed as the first script argument.
 // Usage: <output_path> [query] [offset] [limit]
-// query is a Java regex applied case-insensitively as a partial match (Pattern.find()), default ".*".
+// query is a literal substring applied case-insensitively as a partial match; empty or ".*" matches all.
 // @category rbinghidra
 
 import com.google.gson.Gson;
@@ -20,7 +20,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 
 public class list_exports extends GhidraScript {
 
@@ -39,7 +38,9 @@ public class list_exports extends GhidraScript {
         }
         String outputPath = args[0];
         String requestedQuery = args.length >= 2 && args[1] != null ? args[1] : "";
-        String query = requestedQuery.isEmpty() ? DEFAULT_QUERY : requestedQuery;
+        String query = requestedQuery.isEmpty() || DEFAULT_QUERY.equals(requestedQuery)
+            ? DEFAULT_QUERY
+            : Pattern.quote(requestedQuery);
         long offset = parseLong(args, 2, DEFAULT_OFFSET);
         long limit = parseLong(args, 3, DEFAULT_LIMIT);
         if (offset < 0L) {
@@ -57,13 +58,7 @@ public class list_exports extends GhidraScript {
             throw new IllegalStateException("no program");
         }
 
-        Pattern pattern;
-        try {
-            pattern = Pattern.compile(query, Pattern.CASE_INSENSITIVE);
-        } catch (PatternSyntaxException e) {
-            printerr("[list_exports] invalid regex '" + query + "': " + e.getMessage());
-            throw e;
-        }
+        Pattern pattern = Pattern.compile(query, Pattern.CASE_INSENSITIVE);
 
         SymbolTable table = currentProgram.getSymbolTable();
         SymbolIterator it = table.getAllSymbols(true);
@@ -126,19 +121,19 @@ public class list_exports extends GhidraScript {
         return entry;
     }
 
-    private long parseLong(String[] args, int index, long fallback) {
+    private long parseLong(String[] args, int index, long defaultValue) {
         if (index >= args.length) {
-            return fallback;
+            return defaultValue;
         }
         String raw = args[index];
         if (raw == null || raw.isEmpty()) {
-            return fallback;
+            return defaultValue;
         }
         try {
             return Long.parseLong(raw);
         } catch (NumberFormatException e) {
-            printerr("[list_exports] could not parse '" + raw + "' as long; using default " + fallback);
-            return fallback;
+            printerr("[list_exports] could not parse '" + raw + "' as long; using default " + defaultValue);
+            return defaultValue;
         }
     }
 

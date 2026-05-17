@@ -25,6 +25,13 @@ fn fake_failing_analyze_headless(path: &Path) {
     write_executable(path, "#!/bin/sh\necho 'oops' >&2\nexit 7\n");
 }
 
+fn fake_no_load_spec_analyze_headless(path: &Path) {
+    write_executable(
+        path,
+        "#!/bin/sh\necho 'INFO No load spec found for import file: sample.potm'\necho 'ERROR REPORT: Import failed for file: sample.potm'\nexit 0\n",
+    );
+}
+
 fn fake_slow_analyze_headless(path: &Path) {
     write_executable(path, "#!/bin/sh\nsleep 30\nexit 0\n");
 }
@@ -119,7 +126,7 @@ fn import_binary_returns_ready_after_runner_writes_output_file() {
 
         let second = import_binary(&ctx, &bin).await.unwrap();
         assert_eq!(second.status, "ready");
-        assert_eq!(second.eta_ms, 0);
+        assert_eq!(second.eta_ms, None);
         assert!(!second.started);
         assert!(second.output_path.ends_with(FUNCTIONS_OUTPUT_FILE));
     });
@@ -190,6 +197,41 @@ fn import_binary_failing_runner_does_not_write_output_or_panic() {
         assert_eq!(failed.status, "failed");
         assert!(!failed.started);
         assert!(failed.error.as_deref().unwrap_or("").contains("non-zero"));
+    });
+}
+
+#[test]
+fn import_binary_success_without_output_surfaces_headless_import_reason() {
+    let rt = make_runtime();
+    rt.block_on(async {
+        let tmp = TempDir::new().unwrap();
+        let cache = CachePaths::new(tmp.path().join("cache"));
+        let mgr = Arc::new(ProjectManager::new(&cache));
+
+        let bin = tmp.path().join("sample.potm");
+        std::fs::write(&bin, b"not a recognized program").unwrap();
+        let sha256_hex = hash_file(&bin).await.unwrap();
+        let analyze = tmp.path().join("fake_analyze_headless");
+        fake_no_load_spec_analyze_headless(&analyze);
+        let ctx = make_ctx(&tmp, mgr.clone(), analyze, Duration::from_secs(10));
+
+        let report = import_binary(&ctx, &bin).await.unwrap();
+        assert_eq!(report.status, "analyzing");
+        assert!(report.started);
+
+        let error_path = mgr.project_dir(&sha256_hex).join(IMPORT_ERROR_FILE);
+        assert!(
+            wait_for_file(&error_path, Duration::from_secs(5)).await,
+            "runner should write {error_path:?}"
+        );
+
+        let failed = import_binary(&ctx, &bin).await.unwrap();
+        assert_eq!(failed.status, "failed");
+        let error = failed.error.as_deref().unwrap_or("");
+        assert!(
+            error.contains("No load spec found"),
+            "expected Ghidra diagnostic in import error, got {error:?}"
+        );
     });
 }
 

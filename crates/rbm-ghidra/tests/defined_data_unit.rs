@@ -62,6 +62,7 @@ fn defined_data_result_serializes_to_stable_shape() {
         offset: 0,
         limit: 25,
         total_matched: 1,
+        truncated: false,
         error_count: 0,
         data: vec![entry],
     };
@@ -71,6 +72,7 @@ fn defined_data_result_serializes_to_stable_shape() {
     assert_eq!(v["offset"], 0u64);
     assert_eq!(v["limit"], 25u64);
     assert_eq!(v["total_matched"], 1u64);
+    assert_eq!(v["truncated"], false);
     assert_eq!(v["error_count"], 0u64);
     assert_eq!(v["data"].as_array().unwrap().len(), 1);
     assert_eq!(v["data"][0]["label"], "g_config");

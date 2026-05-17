@@ -28,7 +28,7 @@ fn make_strings_ctx(tmp: &TempDir, manager: Arc<ProjectManager>) -> SearchString
         manager,
         analyze_headless: analyze,
         scripts_dir: scripts,
-        timeout: Duration::from_secs(5),
+        timeout: Duration::from_millis(100),
     }
 }
 
@@ -162,6 +162,7 @@ fn search_strings_result_serializes_to_stable_shape() {
         offset: 0,
         limit: 25,
         total_matched: 1,
+        truncated: false,
         error_count: 0,
         strings: vec![StringEntry {
             address: "0x100004000".to_string(),
@@ -181,6 +182,7 @@ fn search_strings_result_serializes_to_stable_shape() {
     assert_eq!(json["offset"], 0);
     assert_eq!(json["limit"], 25);
     assert_eq!(json["total_matched"], 1);
+    assert_eq!(json["truncated"], false);
     assert_eq!(json["error_count"], 0);
     assert_eq!(json["strings"][0]["address"], "0x100004000");
     assert_eq!(json["strings"][0]["value"], "Usage: %s");

@@ -30,7 +30,9 @@ pub struct SearchBytesResult {
 
 #[derive(Debug, Error)]
 pub enum SearchBytesError {
-    #[error("invalid hex pattern '{0}': must be a non-empty even-length string of hex digits")]
+    #[error(
+        "invalid hex pattern '{0}': must be non-empty hex bytes; ASCII whitespace between bytes is allowed"
+    )]
     InvalidHexPattern(String),
     #[error("search failed: {0}")]
     SearchFailed(String),
@@ -67,11 +69,9 @@ pub enum SearchBytesError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(SearchBytesError);
-
 
 #[derive(Debug, Clone)]
 pub struct SearchBytesContext {
@@ -102,10 +102,18 @@ pub fn resolve_max_hits(max_hits: Option<u64>) -> u64 {
     max_hits.unwrap_or(DEFAULT_MAX_HITS).min(MAX_HITS_CAP)
 }
 
-fn validate_hex_pattern(hex_pattern: &str) -> bool {
-    !hex_pattern.is_empty()
-        && hex_pattern.len().is_multiple_of(2)
-        && hex_pattern.chars().all(|c| c.is_ascii_hexdigit())
+fn normalize_hex_pattern(hex_pattern: &str) -> Option<String> {
+    let normalized: String = hex_pattern
+        .chars()
+        .filter(|c| !c.is_ascii_whitespace())
+        .collect();
+    if normalized.is_empty()
+        || !normalized.len().is_multiple_of(2)
+        || !normalized.chars().all(|c| c.is_ascii_hexdigit())
+    {
+        return None;
+    }
+    Some(normalized.to_ascii_lowercase())
 }
 
 /// Search for a byte pattern in a cached Ghidra project.
@@ -121,9 +129,8 @@ pub async fn search_bytes(
     hex_pattern: &str,
     max_hits: Option<u64>,
 ) -> Result<SearchBytesResult, SearchBytesError> {
-    if !validate_hex_pattern(hex_pattern) {
-        return Err(SearchBytesError::InvalidHexPattern(hex_pattern.to_string()));
-    }
+    let normalized_pattern = normalize_hex_pattern(hex_pattern)
+        .ok_or_else(|| SearchBytesError::InvalidHexPattern(hex_pattern.to_string()))?;
 
     let resolved_max_hits = resolve_max_hits(max_hits);
 
@@ -140,8 +147,8 @@ pub async fn search_bytes(
         binary_query,
         script_name: SEARCH_BYTES_SCRIPT,
         output_prefix: OUTPUT_PREFIX,
-        output_key: hex_pattern,
-        extra_script_args: vec![hex_pattern.to_string(), resolved_max_hits.to_string()],
+        output_key: &normalized_pattern,
+        extra_script_args: vec![normalized_pattern.clone(), resolved_max_hits.to_string()],
     })
     .await?;
 
@@ -165,4 +172,29 @@ pub async fn search_bytes(
         truncated: envelope.truncated,
         hits: envelope.hits,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_spaced_hex_patterns() {
+        assert_eq!(
+            normalize_hex_pattern("cf fa ed fe").as_deref(),
+            Some("cffaedfe")
+        );
+        assert_eq!(
+            normalize_hex_pattern("CF\tFA\nED FE").as_deref(),
+            Some("cffaedfe")
+        );
+    }
+
+    #[test]
+    fn rejects_empty_or_malformed_hex_patterns() {
+        assert!(normalize_hex_pattern("").is_none());
+        assert!(normalize_hex_pattern("   ").is_none());
+        assert!(normalize_hex_pattern("c f a").is_none());
+        assert!(normalize_hex_pattern("cf zz").is_none());
+    }
 }

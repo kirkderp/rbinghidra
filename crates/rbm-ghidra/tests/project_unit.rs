@@ -5,10 +5,9 @@ use std::time::Duration;
 
 use rbm_ghidra::import::{ImportContext, ImportError, ImportReport, import_binary};
 use rbm_ghidra::project::{
-    CODE_INDEX_OUTPUT_FILE, EXTRACT_FUNCTIONS_SCRIPT, FUNCTIONS_OUTPUT_FILE, HeadlessRunner,
-    ImportSpec, PathValidationError, ProjectManager, build_import_argv, cache_key, estimate_eta_ms,
-    hash_file, project_name_for, safe_ghidra_dir_for_headless, sanitize_project_name,
-    stage_script_for_headless,
+    EXTRACT_FUNCTIONS_SCRIPT, FUNCTIONS_OUTPUT_FILE, HeadlessRunner, ImportSpec,
+    PathValidationError, ProjectManager, build_import_argv, cache_key, hash_file, project_name_for,
+    safe_ghidra_dir_for_headless, sanitize_project_name, stage_script_for_headless,
 };
 use tempfile::TempDir;
 
@@ -217,16 +216,6 @@ fn sanitize_project_name_strips_punctuation_keeps_safe_chars() {
 }
 
 #[test]
-fn estimate_eta_ms_clamps_to_floor_and_ceiling() {
-    assert_eq!(estimate_eta_ms(0), 5_000);
-    assert_eq!(estimate_eta_ms(1), 5_000);
-    assert_eq!(estimate_eta_ms(1024 * 1024), 5_000);
-    let mid = estimate_eta_ms(10 * 1024 * 1024);
-    assert!((5_000..=600_000).contains(&mid), "{mid}");
-    assert_eq!(estimate_eta_ms(u64::MAX), 600_000);
-}
-
-#[test]
 fn project_manager_paths_use_cache_layout() {
     let (tmp, mgr) = make_manager();
     let dir = mgr.project_dir("abc123");
@@ -245,10 +234,6 @@ fn project_manager_paths_use_cache_layout() {
     }
     assert!(dir.ends_with("abc123"));
     assert_eq!(mgr.output_path("abc123"), dir.join(FUNCTIONS_OUTPUT_FILE));
-    assert_eq!(
-        mgr.code_index_path("abc123"),
-        dir.join(CODE_INDEX_OUTPUT_FILE)
-    );
 }
 
 #[test]
@@ -335,7 +320,7 @@ fn import_report_serializes_to_stable_shape() {
         binary_name: "sample.bin".to_string(),
         project_dir: "/tmp/proj".to_string(),
         output_path: "/tmp/proj/functions.json".to_string(),
-        eta_ms: 12_345,
+        eta_ms: None,
         started: true,
         next_action: "poll".to_string(),
         error: None,
@@ -346,7 +331,7 @@ fn import_report_serializes_to_stable_shape() {
     assert_eq!(json["binary_name"], "sample.bin");
     assert_eq!(json["project_dir"], "/tmp/proj");
     assert_eq!(json["output_path"], "/tmp/proj/functions.json");
-    assert_eq!(json["eta_ms"], 12_345);
+    assert!(json.get("eta_ms").is_none());
     assert_eq!(json["started"], true);
     assert_eq!(json["next_action"], "poll");
 }
@@ -371,9 +356,9 @@ fn import_binary_returns_ready_when_output_already_exists() {
         assert_eq!(report.status, "ready");
         assert_eq!(report.cache_key, format!("sha256:{sha256_hex}"));
         assert_eq!(report.binary_name, "sample.bin");
-        assert_eq!(report.eta_ms, 0);
+        assert_eq!(report.eta_ms, None);
         assert!(!report.started);
-        assert!(report.next_action.contains("RE tools"));
+        assert!(report.next_action.contains("Ghidra tools"));
         assert!(report.output_path.ends_with(FUNCTIONS_OUTPUT_FILE));
     });
 }
@@ -397,8 +382,8 @@ fn import_binary_returns_analyzing_without_starting_when_lock_held() {
         let report = import_binary(&ctx, &bin).await.unwrap();
         assert_eq!(report.status, "analyzing");
         assert!(!report.started, "lock was held, no new task should start");
-        assert!(report.eta_ms >= 5_000);
-        assert!(report.next_action.contains("ghidra_import again"));
+        assert_eq!(report.eta_ms, None);
+        assert!(report.next_action.contains("already running"));
     });
 }
 

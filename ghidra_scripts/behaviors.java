@@ -306,7 +306,7 @@ public class behaviors extends GhidraScript {
                     }
                 }
                 int matchCount = matchedApis.size();
-                if ("ransomware_pattern".equals(pattern.id) && !matchedApis.contains("CryptEncrypt")) {
+                if ("ransomware_pattern".equals(pattern.id) && !containsApiMatch(matchedApis, "CryptEncrypt")) {
                     continue;
                 }
                 if ("defense_evasion".equals(pattern.id)

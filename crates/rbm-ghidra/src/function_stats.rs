@@ -32,6 +32,7 @@ pub struct FunctionStatsResult {
     pub basic_block_count: u64,
     pub cyclomatic_complexity: u64,
     pub call_count: u64,
+    pub external_call_count: u64,
     pub memory_reference_count: u64,
     #[serde(default)]
     pub imports_by_library: serde_json::Value,
@@ -117,6 +118,8 @@ struct FunctionStatsEnvelope {
     #[serde(default)]
     call_count: u64,
     #[serde(default)]
+    external_call_count: u64,
+    #[serde(default)]
     memory_reference_count: u64,
     #[serde(default)]
     imports_by_library: serde_json::Value,
@@ -181,6 +184,7 @@ pub async fn get_function_stats(
         basic_block_count: envelope.basic_block_count,
         cyclomatic_complexity: envelope.cyclomatic_complexity,
         call_count: envelope.call_count,
+        external_call_count: envelope.external_call_count,
         memory_reference_count: envelope.memory_reference_count,
         imports_by_library: envelope.imports_by_library,
         has_stack_frame: envelope.has_stack_frame,

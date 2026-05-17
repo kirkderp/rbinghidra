@@ -126,11 +126,9 @@ pub enum FunctionCheckpointsError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(FunctionCheckpointsError);
-
 
 #[derive(Debug, Clone)]
 pub struct FunctionCheckpointsContext {

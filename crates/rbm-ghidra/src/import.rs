@@ -9,8 +9,8 @@ use tokio::sync::OwnedMutexGuard;
 
 use crate::project::{
     EXTRACT_FUNCTIONS_SCRIPT, HeadlessOutcome, HeadlessRunner, IMPORT_ERROR_FILE, ImportSpec,
-    PathValidationError, ProjectError, ProjectManager, cache_key, estimate_eta_ms, hash_file,
-    project_name_for, stage_script_for_headless, validate_ghidra_environment,
+    PathValidationError, ProjectError, ProjectManager, cache_key, hash_file, project_name_for,
+    stage_script_for_headless, validate_ghidra_environment,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -20,7 +20,8 @@ pub struct ImportReport {
     pub binary_name: String,
     pub project_dir: String,
     pub output_path: String,
-    pub eta_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta_ms: Option<u64>,
     pub started: bool,
     pub next_action: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -108,18 +109,22 @@ impl ImportReport {
         binary_name: String,
         project_dir: &Path,
         output_path: &Path,
-        eta_ms: u64,
         started: bool,
     ) -> Self {
+        let next_action = if started {
+            "Import is running. Call ghidra_import again with the same binary_path until status is ready; duration depends on Ghidra analysis time."
+        } else {
+            "Import or analysis for this binary is already running. Retry ghidra_import later, or call ghidra_lock_status with the cache_key."
+        };
         Self {
             status: "analyzing".to_string(),
             cache_key: key,
             binary_name,
             project_dir: project_dir.display().to_string(),
             output_path: output_path.display().to_string(),
-            eta_ms,
+            eta_ms: None,
             started,
-            next_action: "Call ghidra_import again with the same binary_path until status is ready; then use cache_key or binary_name with RE tools.".to_string(),
+            next_action: next_action.to_string(),
             error: None,
         }
     }
@@ -131,9 +136,9 @@ impl ImportReport {
             binary_name,
             project_dir: project_dir.display().to_string(),
             output_path: output_path.display().to_string(),
-            eta_ms: 0,
+            eta_ms: None,
             started: false,
-            next_action: "Use cache_key or binary_name with RE tools.".to_string(),
+            next_action: "Use cache_key or binary_name with Ghidra tools.".to_string(),
             error: None,
         }
     }
@@ -151,7 +156,7 @@ impl ImportReport {
             binary_name,
             project_dir: project_dir.display().to_string(),
             output_path: output_path.display().to_string(),
-            eta_ms: 0,
+            eta_ms: None,
             started: false,
             next_action: "Import failed. Use ghidra_import with explicit loader/processor options for raw data, or choose a recognized executable format.".to_string(),
             error: Some(error),
@@ -189,11 +194,6 @@ pub async fn import_binary_with_options(
 
     validate_paths(ctx, binary_path).await?;
 
-    let metadata = tokio::fs::metadata(binary_path)
-        .await
-        .map_err(|e| ImportError::io(binary_path, e))?;
-    let file_size = metadata.len();
-
     let sha256_hex = hash_file(binary_path).await?;
     let project_dir = ctx.manager.project_dir(&sha256_hex);
     let output_path = ctx.manager.output_path(&sha256_hex);
@@ -213,7 +213,6 @@ pub async fn import_binary_with_options(
                 binary_name,
                 &project_dir,
                 &output_path,
-                estimate_eta_ms(file_size),
                 false,
             ));
         }
@@ -243,7 +242,6 @@ pub async fn import_binary_with_options(
         .await
         .map_err(|e| ImportError::io(&project_dir, e))?;
 
-    let estimate = estimate_eta_ms(file_size);
     let lock = ctx.manager.lock_for(&sha256_hex);
 
     match lock.try_lock_owned() {
@@ -252,7 +250,6 @@ pub async fn import_binary_with_options(
             binary_name,
             &project_dir,
             &output_path,
-            estimate,
             false,
         )),
         Ok(guard) => {
@@ -300,7 +297,6 @@ pub async fn import_binary_with_options(
                 binary_name,
                 &project_dir,
                 &output_path,
-                estimate,
                 true,
             ))
         }
@@ -355,6 +351,7 @@ async fn write_import_failure(
     error: String,
     outcome: Option<&HeadlessOutcome>,
 ) -> Result<(), ImportError> {
+    let error = summarize_import_failure(&error, outcome);
     let envelope = ImportFailureEnvelope {
         schema: "rbm.ghidra.import_failure.v0".to_string(),
         error,
@@ -372,6 +369,28 @@ async fn write_import_failure(
     tokio::fs::write(error_path, json)
         .await
         .map_err(|e| ImportError::io(error_path, e))
+}
+
+fn summarize_import_failure(default_error: &str, outcome: Option<&HeadlessOutcome>) -> String {
+    let Some(outcome) = outcome else {
+        return default_error.to_string();
+    };
+    let combined = format!("{}\n{}", outcome.stderr, outcome.stdout);
+    for line in combined.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.contains("No load spec found")
+            || trimmed.contains("could not successfully load")
+            || trimmed.contains("Import failed")
+            || trimmed.contains("ERROR Abort due")
+            || trimmed.contains("ERROR REPORT: Import failed")
+        {
+            return trimmed.to_string();
+        }
+    }
+    default_error.to_string()
 }
 
 fn spawn_import_task(
@@ -448,4 +467,27 @@ async fn validate_paths(ctx: &ImportContext, binary_path: &Path) -> Result<(), I
     )
     .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn import_failure_summary_prefers_ghidra_abort_line() {
+        let outcome = HeadlessOutcome {
+            success: false,
+            exit_code: Some(1),
+            stdout: "INFO startup\nERROR Abort due to Headless analyzer error: Path element starting with '.' is not permitted\n".to_string(),
+            stderr: "openjdk warning\n".to_string(),
+        };
+
+        assert_eq!(
+            summarize_import_failure(
+                "analyzeHeadless exited non-zero with code 1",
+                Some(&outcome)
+            ),
+            "ERROR Abort due to Headless analyzer error: Path element starting with '.' is not permitted"
+        );
+    }
 }

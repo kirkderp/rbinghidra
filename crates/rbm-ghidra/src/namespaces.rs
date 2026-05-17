@@ -69,11 +69,9 @@ pub enum NamespacesError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(NamespacesError);
-
 
 #[derive(Debug, Clone)]
 pub struct NamespacesContext {

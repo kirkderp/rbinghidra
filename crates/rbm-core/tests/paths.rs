@@ -14,7 +14,7 @@ fn derives_overflow_and_ghidra_subpaths() {
         paths.ghidra_project_dir("abc123"),
         root.join("ghidra").join("abc123")
     );
-    assert_eq!(paths.r2_sessions_dir(), root.join("r2_sessions"));
+    assert_eq!(paths.sessions_dir(), root.join("sessions"));
     assert_eq!(paths.tmp_dir(), root.join("tmp"));
 }
 
@@ -26,6 +26,6 @@ fn ensure_all_creates_every_subdirectory() {
 
     assert!(paths.overflow_dir().is_dir());
     assert!(paths.ghidra_dir().is_dir());
-    assert!(paths.r2_sessions_dir().is_dir());
+    assert!(paths.sessions_dir().is_dir());
     assert!(paths.tmp_dir().is_dir());
 }

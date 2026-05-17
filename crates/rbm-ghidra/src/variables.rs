@@ -110,11 +110,9 @@ pub enum VariablesError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(VariablesError);
-
 
 #[derive(Debug, Clone)]
 pub struct VariablesContext {

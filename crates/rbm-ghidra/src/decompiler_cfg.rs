@@ -252,6 +252,10 @@ pub enum DecompilerCfgError {
         "invalid simplification_style '{style}'; expected one of: decompile, normalize, register, firstpass, paramid"
     )]
     InvalidSimplificationStyle { style: String },
+    #[error(
+        "invalid function_slices mode '{mode}'; expected one of: all, callsites, fields, buffers, indirect, lineage, table_lineage"
+    )]
+    InvalidFunctionSlicesMode { mode: String },
     #[error("function resolution failed: {0}")]
     ResolutionFailed(String),
     #[error(transparent)]
@@ -287,11 +291,9 @@ pub enum DecompilerCfgError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(DecompilerCfgError);
-
 
 #[derive(Debug, Clone)]
 pub struct DecompilerCfgContext {

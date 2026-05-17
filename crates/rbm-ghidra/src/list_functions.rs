@@ -11,7 +11,7 @@ pub const DEFAULT_OFFSET: u64 = 0;
 pub const DEFAULT_LIMIT: u64 = 25;
 pub const MAX_LIMIT: u64 = 1000;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct FunctionEntry {
     pub name: String,
     pub entry: String,
@@ -32,6 +32,7 @@ pub struct ListFunctionsResult {
     pub offset: u64,
     pub limit: u64,
     pub total_matched: u64,
+    pub truncated: bool,
     pub functions: Vec<FunctionEntry>,
 }
 
@@ -128,6 +129,7 @@ pub async fn list_functions(
     let total_matched = matched.len() as u64;
     let page_offset = usize::try_from(resolved_offset).unwrap_or(usize::MAX);
     let page_limit = usize::try_from(resolved_limit).unwrap_or(usize::MAX);
+    let truncated = total_matched > resolved_offset.saturating_add(resolved_limit);
 
     let page: Vec<FunctionEntry> = matched
         .into_iter()
@@ -144,6 +146,7 @@ pub async fn list_functions(
         offset: resolved_offset,
         limit: resolved_limit,
         total_matched,
+        truncated,
         functions: page,
     })
 }

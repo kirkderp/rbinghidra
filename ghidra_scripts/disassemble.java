@@ -1,4 +1,4 @@
-// Return raw instruction listing for a function.
+// Return raw instruction listing for an address or function.
 // Usage: <output_path> <name_or_address> [max_instructions] [include_analysis]
 // name_or_address is parsed as an address first, then falls back to case-insensitive
 // exact-then-partial match against the fully-qualified function name (Function.getName(true)).
@@ -72,27 +72,45 @@ public class disassemble extends GhidraScript {
         envelope.put("resolution_error", "");
 
         FunctionManager fm = currentProgram.getFunctionManager();
-        Function fn;
+        Function fn = null;
+        Address startAddress = parseQueryAddress(query);
         try {
-            fn = resolveFunction(fm, query);
+            if (startAddress != null) {
+                fn = fm.getFunctionAt(startAddress);
+                if (fn == null) {
+                    fn = fm.getFunctionContaining(startAddress);
+                }
+            } else {
+                fn = resolveFunction(fm, query);
+                startAddress = fn.getEntryPoint();
+            }
         } catch (ResolutionException re) {
             envelope.put("resolution_error", re.getMessage());
             writeOutput(outputPath, envelope);
             println("[disassemble] resolution failed for '" + query + "': " + re.getMessage());
             return;
         }
+        if (startAddress == null) {
+            envelope.put("resolution_error", "Address '" + query + "' could not be resolved.");
+            writeOutput(outputPath, envelope);
+            println("[disassemble] address resolution failed for '" + query + "'");
+            return;
+        }
 
-        envelope.put("function_name", safeFullName(fn));
-        envelope.put("address", fn.getEntryPoint() != null ? fn.getEntryPoint().toString() : "");
+        envelope.put("function_name", fn != null ? safeFullName(fn) : "");
+        envelope.put("address", startAddress.toString());
 
-        AddressSetView body = fn.getBody();
-        InstructionIterator instrIt = currentProgram.getListing().getInstructions(body, true);
+        AddressSetView body = fn != null ? fn.getBody() : null;
+        InstructionIterator instrIt = currentProgram.getListing().getInstructions(startAddress, true);
         Map<Address, Instruction> instructionsByAddress = new LinkedHashMap<>();
-        while (instrIt.hasNext()) {
+        while (instrIt.hasNext() && instructionsByAddress.size() < maxInstructions) {
             Instruction instr = instrIt.next();
+            if (body != null && !body.contains(instr.getAddress())) {
+                break;
+            }
             instructionsByAddress.put(instr.getAddress(), instr);
         }
-        StackDeltaAnalysis stackDeltaAnalysis = includeAnalysis
+        StackDeltaAnalysis stackDeltaAnalysis = includeAnalysis && fn != null && body != null
             ? computeEspDeltas(fn, body, instructionsByAddress)
             : new StackDeltaAnalysis();
         List<Map<String, Object>> instrList = new ArrayList<>();
@@ -160,7 +178,7 @@ public class disassemble extends GhidraScript {
         envelope.put("instructions", instrList);
 
         writeOutput(outputPath, envelope);
-        println("[disassemble] extracted " + instrList.size() + " of " + totalInstructions + " instructions for " + safeFullName(fn));
+        println("[disassemble] extracted " + instrList.size() + " of " + totalInstructions + " instructions at " + startAddress);
     }
 
     private int parseMaxInstructions(String raw) {
@@ -186,18 +204,21 @@ public class disassemble extends GhidraScript {
         return value.equals("true") || value.equals("1") || value.equals("yes") || value.equals("analysis");
     }
 
-    private Function resolveFunction(FunctionManager fm, String nameOrAddress) throws ResolutionException {
-        Address targetAddress = null;
+    private Address parseQueryAddress(String nameOrAddress) {
         try {
             AddressFactory af = currentProgram.getAddressFactory();
             String stripped = nameOrAddress;
             if (stripped.startsWith("0x") || stripped.startsWith("0X")) {
                 stripped = stripped.substring(2);
             }
-            targetAddress = af.getAddress(stripped);
+            return af.getAddress(stripped);
         } catch (Exception e) {
-            targetAddress = null;
+            return null;
         }
+    }
+
+    private Function resolveFunction(FunctionManager fm, String nameOrAddress) throws ResolutionException {
+        Address targetAddress = parseQueryAddress(nameOrAddress);
         if (targetAddress != null) {
             Function hit = fm.getFunctionAt(targetAddress);
             if (hit != null) {

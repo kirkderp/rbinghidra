@@ -5,7 +5,11 @@ use rbm_ghidra::discover_install_dir;
 use rbm_server::RbmServer;
 
 #[derive(Parser)]
-#[command(name = "rbinghidra", version, about = "MCP server for Ghidra-based binary analysis")]
+#[command(
+    name = "rbinghidra",
+    version,
+    about = "MCP server for Ghidra-based binary analysis"
+)]
 struct Cli {
     /// Log level (trace, debug, info, warn, error)
     #[arg(long, default_value = "info")]
@@ -38,10 +42,18 @@ async fn main() -> Result<()> {
         .cache
         .ensure_all()
         .context("failed to prepare cache directories")?;
+    anyhow::ensure!(
+        config.ghidra_scripts_dir.is_dir(),
+        "repo-owned Ghidra scripts directory does not exist or is not a directory: {}",
+        config.ghidra_scripts_dir.display()
+    );
 
     let server = RbmServer::new(config);
     tracing::info!("rbinghidra MCP server starting on stdio");
 
-    server.serve_stdio().await.map_err(|e| anyhow::anyhow!("{}", e))?;
+    server
+        .serve_stdio()
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
     Ok(())
 }

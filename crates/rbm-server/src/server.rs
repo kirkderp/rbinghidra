@@ -3,26 +3,27 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use rbm_core::ServerConfig;
+use rbm_ghidra::inspect::parse_sha256_lookup;
 use rbm_ghidra::{
     AntiAnalysisContext, BehaviorsContext, CallGraphContext, CfgContext, ContextApiSlotsContext,
-    CreateFunctionContext, CreateLabelContext, DataTypesContext, DecompileContext,
-    DecompileMetaContext, DecompilerBlockBehaviorContext, DecompilerBlockBehaviorFilter,
-    DecompilerCallsContext, DecompilerCallsFilter, DecompilerCfgContext, DecompilerMemoryContext,
-    DecompilerMemoryFilter, DecompilerSliceContext, DefinedDataContext, DisassembleContext,
-    DynamicDispatchTableContext, DynamicDispatchTableOptions, EquatesContext,
-    FunctionCheckpointsContext, FunctionStatsContext, ImportContext, ImportOptions,
-    ImportsExportsContext, MemoryMapContext, NamespacesContext, PcodeContext, ProjectManager,
-    ReadBytesContext, RenameContext, SearchBytesContext, SearchStringsContext, SetPrototypeContext,
-    SymbolsContext, ThunkTargetContext, VariablesContext, XrefsContext, create_function,
-    create_label, decompile_function, disassemble_function, gen_callgraph, gen_cfg,
+    DataTypesContext, DecompileContext, DecompileMetaContext, DecompilerBlockBehaviorContext,
+    DecompilerBlockBehaviorFilter, DecompilerCallsContext, DecompilerCallsFilter,
+    DecompilerCfgContext, DecompilerMemoryContext, DecompilerMemoryFilter, DecompilerSliceContext,
+    DefinedDataContext, DisassembleContext, DynamicDispatchTableContext,
+    DynamicDispatchTableOptions, EquatesContext, FunctionCheckpointsContext, FunctionSlicesContext,
+    FunctionSlicesOptions, FunctionStatsContext, ImportContext, ImportOptions,
+    ImportsExportsContext, MemoryMapContext, NamespacesContext, PathDigestContext,
+    PathDigestOptions, PcodeContext, ProjectManager, ReadBytesContext, SearchBytesContext,
+    SearchStringsContext, SymbolsContext, ThunkTargetContext, VariablesContext, XrefsContext,
+    decompile_function, delete_cached_binary, disassemble_function, gen_callgraph, gen_cfg,
     gen_decompiler_cfg, get_cached_metadata, get_context_api_slots, get_data_types,
     get_decompile_meta, get_decompiler_block_behavior, get_decompiler_calls, get_decompiler_memory,
-    get_decompiler_slice, get_equates, get_function_checkpoints, get_function_stats,
-    get_memory_map, get_pcode, get_thunk_target, get_variables, import_binary_with_options,
-    list_cached_binaries, list_defined_data, list_exports, list_functions, list_imports,
-    list_namespaces, list_xrefs, probe_at, read_bytes, recover_dynamic_dispatch_table,
-    rename_function, scan_anti_analysis, scan_behaviors, search_bytes, search_strings,
-    search_symbols, set_function_prototype,
+    get_decompiler_slice, get_equates, get_function_checkpoints, get_function_slices,
+    get_function_stats, get_memory_map, get_path_digest, get_pcode, get_thunk_target,
+    get_variables, import_binary_with_options, list_cached_binaries, list_defined_data,
+    list_exports, list_functions, list_imports, list_namespaces, list_xrefs, probe_at, read_bytes,
+    recover_dynamic_dispatch_table, scan_anti_analysis, scan_behaviors, search_bytes,
+    search_strings, search_symbols,
 };
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
@@ -79,11 +80,28 @@ impl RbmServer {
         fn req(name: &str) -> serde_json::Value {
             json!({"type": "string", "description": name})
         }
+        fn binary_ref() -> serde_json::Value {
+            req("binary name, raw SHA-256, or sha256: cache key")
+        }
+        fn function_ref() -> serde_json::Value {
+            req("function name or address")
+        }
         fn opt_s(desc: &str) -> serde_json::Value {
             json!({"type": "string", "description": desc})
         }
         fn opt_u32(desc: &str, def: u32) -> serde_json::Value {
-            json!({"type": "integer", "description": desc, "default": def})
+            json!({"type": "integer", "format": "uint32", "description": desc, "default": def})
+        }
+        fn opt_u32_capped(desc: &str, def: u32, max: u32) -> serde_json::Value {
+            json!({"type": "integer", "format": "uint32", "description": desc, "default": def, "maximum": max})
+        }
+        fn simplification_style() -> serde_json::Value {
+            json!({
+                "type": "string",
+                "description": "Decompiler simplification style",
+                "enum": ["decompile", "normalize", "register", "firstpass", "paramid"],
+                "default": "decompile"
+            })
         }
         fn paging_props() -> Vec<(&'static str, serde_json::Value)> {
             vec![
@@ -105,6 +123,20 @@ impl RbmServer {
             }
             json!({"type": "object", "properties": p, "required": required, "additionalProperties": false})
         }
+        fn schema_any_of(
+            props: Vec<(&str, serde_json::Value)>,
+            required: Vec<&str>,
+            any_of: Vec<Vec<&str>>,
+        ) -> serde_json::Value {
+            let mut value = schema(props, required);
+            value["anyOf"] = serde_json::Value::Array(
+                any_of
+                    .into_iter()
+                    .map(|required| json!({"required": required}))
+                    .collect(),
+            );
+            value
+        }
 
         vec![
             t(
@@ -119,25 +151,25 @@ impl RbmServer {
             ),
             t(
                 "ghidra_lock_status",
-                "View lock status",
+                "View in-flight lock status for a cached binary. Held locks mean an import or query is still running; retry once released.",
                 schema(
-                    vec![("binary_name", req("binary name"))],
+                    vec![(
+                        "binary_name",
+                        req("binary name, raw SHA-256, or sha256: cache key"),
+                    )],
                     vec!["binary_name"],
                 ),
             ),
             t(
                 "ghidra_cached_metadata",
                 "Get cached metadata",
-                schema(
-                    vec![("binary_name", req("binary name"))],
-                    vec!["binary_name"],
-                ),
+                schema(vec![("binary_name", binary_ref())], vec!["binary_name"]),
             ),
             t(
                 "ghidra_list_functions",
                 "List functions with filtering",
                 schema(
-                    with_paging(vec![("binary_name", req("binary name"))]),
+                    with_paging(vec![("binary_name", binary_ref())]),
                     vec!["binary_name"],
                 ),
             ),
@@ -146,9 +178,9 @@ impl RbmServer {
                 "Decompile a function",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", req("address")),
-                        ("style", opt_s("style")),
+                        ("binary_name", binary_ref()),
+                        ("function_address", function_ref()),
+                        ("style", simplification_style()),
                     ],
                     vec!["binary_name", "function_address"],
                 ),
@@ -158,10 +190,13 @@ impl RbmServer {
                 "Decompile with context",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", req("address")),
-                        ("style", opt_s("style")),
-                        ("token_limit", opt_u32("max decompiler tokens", 1000)),
+                        ("binary_name", binary_ref()),
+                        ("function_address", function_ref()),
+                        ("style", simplification_style()),
+                        (
+                            "token_limit",
+                            opt_u32_capped("max decompiler tokens", 200, 2000),
+                        ),
                     ],
                     vec!["binary_name", "function_address"],
                 ),
@@ -170,7 +205,7 @@ impl RbmServer {
                 "ghidra_imports",
                 "List imports",
                 schema(
-                    with_paging(vec![("binary_name", req("binary name"))]),
+                    with_paging(vec![("binary_name", binary_ref())]),
                     vec!["binary_name"],
                 ),
             ),
@@ -178,7 +213,7 @@ impl RbmServer {
                 "ghidra_exports",
                 "List exports",
                 schema(
-                    with_paging(vec![("binary_name", req("binary name"))]),
+                    with_paging(vec![("binary_name", binary_ref())]),
                     vec!["binary_name"],
                 ),
             ),
@@ -186,7 +221,7 @@ impl RbmServer {
                 "ghidra_search_strings",
                 "Search strings",
                 schema(
-                    with_paging(vec![("binary_name", req("binary name"))]),
+                    with_paging(vec![("binary_name", binary_ref())]),
                     vec!["binary_name"],
                 ),
             ),
@@ -195,8 +230,10 @@ impl RbmServer {
                 "Search symbols",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
+                        ("binary_name", binary_ref()),
                         ("query", req("symbol name substring")),
+                        ("offset", opt_u32("result offset", 0)),
+                        ("limit", opt_u32_capped("max results", 25, 1000)),
                     ],
                     vec!["binary_name", "query"],
                 ),
@@ -204,16 +241,18 @@ impl RbmServer {
             t(
                 "ghidra_namespaces",
                 "List namespaces",
-                schema(
-                    vec![("binary_name", req("binary name"))],
-                    vec!["binary_name"],
-                ),
+                schema(vec![("binary_name", binary_ref())], vec!["binary_name"]),
             ),
             t(
                 "ghidra_data_types",
                 "List data types",
                 schema(
-                    vec![("binary_name", req("binary name"))],
+                    vec![
+                        ("binary_name", binary_ref()),
+                        ("query", opt_s("substring/filter")),
+                        ("offset", opt_u32("result offset", 0)),
+                        ("limit", opt_u32_capped("max results", 500, 1000)),
+                    ],
                     vec!["binary_name"],
                 ),
             ),
@@ -221,25 +260,22 @@ impl RbmServer {
                 "ghidra_defined_data",
                 "List defined data",
                 schema(
-                    vec![("binary_name", req("binary name"))],
+                    with_paging(vec![("binary_name", binary_ref())]),
                     vec!["binary_name"],
                 ),
             ),
             t(
                 "ghidra_memory_map",
                 "Get memory map",
-                schema(
-                    vec![("binary_name", req("binary name"))],
-                    vec!["binary_name"],
-                ),
+                schema(vec![("binary_name", binary_ref())], vec!["binary_name"]),
             ),
             t(
                 "ghidra_function_stats",
                 "Get function stats",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", req("address")),
+                        ("binary_name", binary_ref()),
+                        ("function_address", function_ref()),
                     ],
                     vec!["binary_name", "function_address"],
                 ),
@@ -249,12 +285,14 @@ impl RbmServer {
                 "Get cross-references",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", req("address")),
+                        ("binary_name", binary_ref()),
+                        ("function_address", function_ref()),
                         (
                             "direction",
                             json!({"type": "string", "description": "xref direction", "enum": ["to", "from"], "default": "to"}),
                         ),
+                        ("offset", opt_u32("result offset", 0)),
+                        ("limit", opt_u32_capped("max results", 25, 1000)),
                     ],
                     vec!["binary_name", "function_address"],
                 ),
@@ -264,12 +302,23 @@ impl RbmServer {
                 "Traverse callgraph",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", opt_s("starting address")),
-                        ("depth", opt_u32("depth", 3)),
-                        ("max_nodes", opt_u32("max nodes", 500)),
+                        ("binary_name", binary_ref()),
+                        ("function_address", req("starting function name or address")),
+                        (
+                            "depth",
+                            opt_u32_capped(
+                                "callgraph depth; 0 uses the built-in max depth of 10",
+                                0,
+                                10,
+                            ),
+                        ),
+                        (
+                            "direction",
+                            json!({"type": "string", "description": "callgraph direction", "enum": ["calling", "called"], "default": "calling"}),
+                        ),
+                        ("max_nodes", opt_u32_capped("max nodes", 1000, 1000)),
                     ],
-                    vec!["binary_name"],
+                    vec!["binary_name", "function_address"],
                 ),
             ),
             t(
@@ -277,8 +326,8 @@ impl RbmServer {
                 "Get basic-block CFG",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", req("address")),
+                        ("binary_name", binary_ref()),
+                        ("function_address", function_ref()),
                     ],
                     vec!["binary_name", "function_address"],
                 ),
@@ -288,9 +337,13 @@ impl RbmServer {
                 "Get decompiler CFG",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", req("address")),
-                        ("style", opt_s("style")),
+                        ("binary_name", binary_ref()),
+                        ("function_address", function_ref()),
+                        ("style", simplification_style()),
+                        (
+                            "include_ops",
+                            json!({"type": "boolean", "description": "include per-block p-code ops", "default": false}),
+                        ),
                     ],
                     vec!["binary_name", "function_address"],
                 ),
@@ -300,10 +353,15 @@ impl RbmServer {
                 "Analyze function calls",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", req("address")),
-                        ("style", opt_s("style")),
+                        ("binary_name", binary_ref()),
+                        ("function_address", function_ref()),
+                        ("style", simplification_style()),
                         ("only_external", json!({"type": "boolean", "default": true})),
+                        (
+                            "only_indirect",
+                            json!({"type": "boolean", "default": false}),
+                        ),
+                        ("only_api_tag", opt_s("API tag substring filter")),
                     ],
                     vec!["binary_name", "function_address"],
                 ),
@@ -313,9 +371,13 @@ impl RbmServer {
                 "Analyze memory access",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", req("address")),
-                        ("style", opt_s("style")),
+                        ("binary_name", binary_ref()),
+                        ("function_address", function_ref()),
+                        ("style", simplification_style()),
+                        (
+                            "only_writes",
+                            json!({"type": "boolean", "description": "only blocks with memory writes", "default": false}),
+                        ),
                     ],
                     vec!["binary_name", "function_address"],
                 ),
@@ -325,9 +387,18 @@ impl RbmServer {
                 "Classify block behavior",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", req("address")),
-                        ("style", opt_s("style")),
+                        ("binary_name", binary_ref()),
+                        ("function_address", function_ref()),
+                        ("style", simplification_style()),
+                        (
+                            "only_strings",
+                            json!({"type": "boolean", "description": "only blocks with string references", "default": false}),
+                        ),
+                        ("only_api_tag", opt_s("API tag substring filter")),
+                        (
+                            "only_external",
+                            json!({"type": "boolean", "description": "only blocks with external calls", "default": false}),
+                        ),
                     ],
                     vec!["binary_name", "function_address"],
                 ),
@@ -337,11 +408,18 @@ impl RbmServer {
                 "Extract decompiler slice",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", req("address")),
+                        ("binary_name", binary_ref()),
+                        ("function_address", function_ref()),
                         ("seed_address", req("seed address")),
-                        ("direction", opt_s("forward/backward")),
-                        ("style", opt_s("style")),
+                        (
+                            "direction",
+                            json!({"type": "string", "description": "slice direction", "enum": ["forward", "backward", "both"], "default": "both"}),
+                        ),
+                        ("style", simplification_style()),
+                        (
+                            "max_ops",
+                            opt_u32_capped("max p-code ops to return", 80, 500),
+                        ),
                     ],
                     vec!["binary_name", "function_address", "seed_address"],
                 ),
@@ -351,8 +429,8 @@ impl RbmServer {
                 "Get function variables",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", req("address")),
+                        ("binary_name", binary_ref()),
+                        ("function_address", function_ref()),
                     ],
                     vec!["binary_name", "function_address"],
                 ),
@@ -362,9 +440,9 @@ impl RbmServer {
                 "Get P-code",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", req("address")),
-                        ("style", opt_s("style")),
+                        ("binary_name", binary_ref()),
+                        ("function_address", function_ref()),
+                        ("style", simplification_style()),
                     ],
                     vec!["binary_name", "function_address"],
                 ),
@@ -374,9 +452,12 @@ impl RbmServer {
                 "Search hex pattern",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
-                        ("hex_pattern", req("hex pattern")),
-                        ("max_hits", opt_u32("max results", 100)),
+                        ("binary_name", binary_ref()),
+                        (
+                            "hex_pattern",
+                            req("hex byte pattern; ASCII whitespace is allowed"),
+                        ),
+                        ("max_hits", opt_u32_capped("max results", 500, 500)),
                     ],
                     vec!["binary_name", "hex_pattern"],
                 ),
@@ -384,28 +465,66 @@ impl RbmServer {
             t(
                 "ghidra_behaviors",
                 "Scan threat patterns",
-                schema(
-                    vec![("binary_name", req("binary name"))],
-                    vec!["binary_name"],
-                ),
+                schema(vec![("binary_name", binary_ref())], vec!["binary_name"]),
             ),
             t(
                 "ghidra_anti_analysis",
                 "Scan anti-analysis techniques",
-                schema(
-                    vec![("binary_name", req("binary name"))],
-                    vec!["binary_name"],
-                ),
+                schema(vec![("binary_name", binary_ref())], vec!["binary_name"]),
             ),
             t(
                 "ghidra_function_checkpoints",
                 "Get P-code checkpoints",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", req("address")),
-                        ("ranges", opt_s("address ranges")),
-                        ("style", opt_s("style")),
+                        ("binary_name", binary_ref()),
+                        ("function_address", function_ref()),
+                        (
+                            "ranges",
+                            opt_s(
+                                "semicolon- or comma-separated address ranges with optional name: prefix, e.g. body:401000-401080,401080-401100",
+                            ),
+                        ),
+                        ("style", simplification_style()),
+                    ],
+                    vec!["binary_name", "function_address"],
+                ),
+            ),
+            t(
+                "ghidra_function_slices",
+                "Get high-level function slices",
+                schema(
+                    vec![
+                        ("binary_name", binary_ref()),
+                        ("function_address", function_ref()),
+                        (
+                            "mode",
+                            json!({"type": "string", "description": "slice mode", "enum": ["all", "callsites", "fields", "buffers", "indirect", "lineage", "table_lineage"], "default": "all"}),
+                        ),
+                        ("query", opt_s("mode-specific substring/filter")),
+                        ("range_start", opt_s("optional address range start")),
+                        ("range_end", opt_s("optional address range end")),
+                        ("limit", opt_u32_capped("max slice entries", 50, 500)),
+                    ],
+                    vec!["binary_name", "function_address"],
+                ),
+            ),
+            t(
+                "ghidra_path_digest",
+                "Get compact path digest",
+                schema(
+                    vec![
+                        ("binary_name", binary_ref()),
+                        ("function_address", function_ref()),
+                        ("range_start", opt_s("optional address range start")),
+                        ("range_end", opt_s("optional address range end")),
+                        ("stop_addresses", opt_s("comma-separated stop addresses")),
+                        ("state_register", opt_s("state register name")),
+                        (
+                            "max_instructions",
+                            opt_u32_capped("max instructions to inspect", 800, 5000),
+                        ),
+                        ("max_events", opt_u32_capped("max events", 200, 1000)),
                     ],
                     vec!["binary_name", "function_address"],
                 ),
@@ -415,14 +534,14 @@ impl RbmServer {
                 "Recover context API slot assignments",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
+                        ("binary_name", binary_ref()),
                         (
                             "target_function",
-                            opt_s("function that consumes resolved API slots"),
+                            req("function/address that consumes resolved API slots"),
                         ),
                         (
                             "init_function",
-                            opt_s("function that initializes the context"),
+                            req("function/address that initializes the context"),
                         ),
                         (
                             "export_resolver",
@@ -438,7 +557,7 @@ impl RbmServer {
                         ),
                         ("limit", opt_u32("max slots", 200)),
                     ],
-                    vec!["binary_name"],
+                    vec!["binary_name", "target_function", "init_function"],
                 ),
             ),
             t(
@@ -446,58 +565,10 @@ impl RbmServer {
                 "Resolve thunk",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", req("address")),
+                        ("binary_name", binary_ref()),
+                        ("function_address", function_ref()),
                     ],
                     vec!["binary_name", "function_address"],
-                ),
-            ),
-            t(
-                "ghidra_rename_function",
-                "Rename function",
-                schema(
-                    vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", req("address")),
-                        ("new_name", req("new name")),
-                    ],
-                    vec!["binary_name", "function_address", "new_name"],
-                ),
-            ),
-            t(
-                "ghidra_set_prototype",
-                "Set function prototype",
-                schema(
-                    vec![
-                        ("binary_name", req("binary name")),
-                        ("function_address", req("address")),
-                        ("prototype", req("prototype string")),
-                    ],
-                    vec!["binary_name", "function_address", "prototype"],
-                ),
-            ),
-            t(
-                "ghidra_create_label",
-                "Create label",
-                schema(
-                    vec![
-                        ("binary_name", req("binary name")),
-                        ("target_address", req("address")),
-                        ("label_name", req("label name")),
-                    ],
-                    vec!["binary_name", "target_address", "label_name"],
-                ),
-            ),
-            t(
-                "ghidra_create_function",
-                "Create function",
-                schema(
-                    vec![
-                        ("binary_name", req("binary name")),
-                        ("target_address", req("address")),
-                        ("function_name", req("function name")),
-                    ],
-                    vec!["binary_name", "target_address", "function_name"],
                 ),
             ),
             t(
@@ -505,9 +576,16 @@ impl RbmServer {
                 "Disassemble at address",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
+                        ("binary_name", binary_ref()),
                         ("target_address", req("address")),
-                        ("max_instructions", opt_u32("max instructions", 100)),
+                        (
+                            "max_instructions",
+                            opt_u32_capped("max instructions", 32, 512),
+                        ),
+                        (
+                            "include_analysis",
+                            json!({"type": "boolean", "description": "include stack/flow analysis", "default": false}),
+                        ),
                     ],
                     vec!["binary_name", "target_address"],
                 ),
@@ -516,16 +594,21 @@ impl RbmServer {
                 "ghidra_equates",
                 "List equates",
                 schema(
-                    vec![("binary_name", req("binary name"))],
+                    vec![
+                        ("binary_name", binary_ref()),
+                        ("query", opt_s("substring/filter")),
+                        ("offset", opt_u32("result offset", 0)),
+                        ("limit", opt_u32_capped("max results", 500, 1000)),
+                    ],
                     vec!["binary_name"],
                 ),
             ),
             t(
                 "ghidra_dynamic_dispatch_table",
                 "Recover dynamic dispatch table",
-                schema(
+                schema_any_of(
                     vec![
-                        ("binary_name", req("binary name")),
+                        ("binary_name", binary_ref()),
                         (
                             "table_count_global",
                             opt_s("global/address containing table count"),
@@ -546,8 +629,11 @@ impl RbmServer {
                         ),
                         ("lookup_hashes", opt_s("comma-separated lookup hashes")),
                         ("adapter_function", opt_s("adapter function/address")),
-                        ("hash_seed", opt_s("hash seed")),
-                        ("hash_multiplier", opt_s("hash multiplier")),
+                        ("hash_seed", opt_s("hash seed as decimal or hex")),
+                        (
+                            "hash_multiplier",
+                            opt_s("hash multiplier as decimal or hex"),
+                        ),
                         (
                             "candidate_names",
                             opt_s("comma-separated candidate API names"),
@@ -559,6 +645,13 @@ impl RbmServer {
                         ("limit", opt_u32("max recovered entries", 100)),
                     ],
                     vec!["binary_name"],
+                    vec![
+                        vec!["table_count_global"],
+                        vec!["table_ptr_global"],
+                        vec!["builder_start"],
+                        vec!["hash_function"],
+                        vec!["call_gate_global"],
+                    ],
                 ),
             ),
             t(
@@ -566,10 +659,29 @@ impl RbmServer {
                 "Read bytes from binary",
                 schema(
                     vec![
-                        ("binary_name", req("binary name")),
+                        ("binary_name", binary_ref()),
                         ("address", req("address")),
+                        ("size", opt_u32_capped("bytes to read", 32, 8192)),
                     ],
                     vec!["binary_name", "address"],
+                ),
+            ),
+            t(
+                "ghidra_delete",
+                "Delete cached Ghidra project data for a binary",
+                schema_any_of(
+                    vec![
+                        (
+                            "binary_name",
+                            req("binary name, raw SHA-256, or sha256: cache key"),
+                        ),
+                        (
+                            "cache_key",
+                            req("explicit sha256: cache key or raw SHA-256"),
+                        ),
+                    ],
+                    vec![],
+                    vec![vec!["binary_name"], vec!["cache_key"]],
                 ),
             ),
             t(
@@ -668,6 +780,9 @@ mod tests {
             "ghidra_imports",
             "ghidra_exports",
             "ghidra_search_strings",
+            "ghidra_data_types",
+            "ghidra_defined_data",
+            "ghidra_equates",
         ] {
             let schema = schema_for(name);
             let props = &schema["properties"];
@@ -678,9 +793,159 @@ mod tests {
     }
 
     #[test]
+    fn data_types_schema_matches_handler_default() {
+        let schema = schema_for("ghidra_data_types");
+        assert_eq!(schema["properties"]["limit"]["default"], 500);
+        assert_eq!(schema["properties"]["limit"]["maximum"], 1000);
+    }
+
+    #[test]
+    fn schema_paging_defaults_match_handlers() {
+        let symbols = schema_for("ghidra_symbols");
+        assert_eq!(symbols["properties"]["limit"]["default"], 25);
+        assert_eq!(symbols["properties"]["limit"]["maximum"], 1000);
+
+        let xrefs = schema_for("ghidra_xrefs");
+        assert_eq!(xrefs["properties"]["limit"]["default"], 25);
+        assert_eq!(xrefs["properties"]["limit"]["maximum"], 1000);
+
+        let equates = schema_for("ghidra_equates");
+        assert_eq!(equates["properties"]["limit"]["default"], 500);
+        assert_eq!(equates["properties"]["limit"]["maximum"], 1000);
+    }
+
+    #[test]
     fn decompile_meta_exposes_token_limit_schema() {
         let schema = schema_for("ghidra_decompile_meta");
         assert_eq!(schema["properties"]["token_limit"]["type"], "integer");
+        assert_eq!(schema["properties"]["token_limit"]["default"], 200);
+        assert_eq!(schema["properties"]["token_limit"]["maximum"], 2000);
+    }
+
+    #[test]
+    fn agent_facing_params_are_discoverable() {
+        let read_bytes = schema_for("ghidra_read_bytes");
+        assert_eq!(read_bytes["properties"]["size"]["default"], 32);
+        assert_eq!(read_bytes["properties"]["size"]["maximum"], 8192);
+
+        let search_bytes = schema_for("ghidra_search_bytes");
+        assert_eq!(search_bytes["properties"]["max_hits"]["default"], 500);
+        assert_eq!(search_bytes["properties"]["max_hits"]["maximum"], 500);
+
+        let slice = schema_for("ghidra_decompiler_slice");
+        assert_eq!(slice["properties"]["max_ops"]["default"], 80);
+        assert_eq!(slice["properties"]["max_ops"]["maximum"], 500);
+        assert_eq!(slice["properties"]["direction"]["default"], "both");
+        assert_eq!(
+            slice["properties"]["direction"]["enum"],
+            serde_json::json!(["forward", "backward", "both"])
+        );
+
+        let callgraph = schema_for("ghidra_callgraph");
+        assert_eq!(callgraph["properties"]["depth"]["default"], 0);
+        assert_eq!(callgraph["properties"]["max_nodes"]["default"], 1000);
+        assert_eq!(callgraph["properties"]["max_nodes"]["maximum"], 1000);
+        assert_eq!(callgraph["properties"]["direction"]["default"], "calling");
+        assert_eq!(
+            callgraph["properties"]["direction"]["enum"],
+            serde_json::json!(["calling", "called"])
+        );
+        assert_eq!(
+            callgraph["required"],
+            serde_json::json!(["binary_name", "function_address"])
+        );
+
+        let decompiler_cfg = schema_for("ghidra_decompiler_cfg");
+        assert_eq!(
+            decompiler_cfg["properties"]["include_ops"]["type"],
+            "boolean"
+        );
+
+        let decompiler_calls = schema_for("ghidra_decompiler_calls");
+        assert_eq!(
+            decompiler_calls["properties"]["only_indirect"]["type"],
+            "boolean"
+        );
+        assert_eq!(
+            decompiler_calls["properties"]["only_api_tag"]["type"],
+            "string"
+        );
+
+        let decompiler_memory = schema_for("ghidra_decompiler_memory");
+        assert_eq!(
+            decompiler_memory["properties"]["only_writes"]["type"],
+            "boolean"
+        );
+
+        let block_behavior = schema_for("ghidra_decompiler_block_behavior");
+        assert_eq!(
+            block_behavior["properties"]["only_strings"]["type"],
+            "boolean"
+        );
+        assert_eq!(
+            block_behavior["properties"]["only_api_tag"]["type"],
+            "string"
+        );
+        assert_eq!(
+            block_behavior["properties"]["only_external"]["type"],
+            "boolean"
+        );
+
+        let decompile = schema_for("ghidra_decompile");
+        assert_eq!(
+            decompile["properties"]["function_address"]["description"],
+            "function name or address"
+        );
+        assert_eq!(
+            decompile["properties"]["style"]["enum"],
+            serde_json::json!(["decompile", "normalize", "register", "firstpass", "paramid"])
+        );
+
+        let cfg = schema_for("ghidra_cfg");
+        assert_eq!(
+            cfg["properties"]["function_address"]["description"],
+            "function name or address"
+        );
+    }
+
+    #[test]
+    fn cleanup_tool_is_exposed() {
+        let schema = schema_for("ghidra_delete");
+        assert_eq!(schema["properties"]["binary_name"]["type"], "string");
+        assert_eq!(
+            schema["properties"]["binary_name"]["description"],
+            "binary name, raw SHA-256, or sha256: cache key"
+        );
+        assert_eq!(
+            schema["properties"]["cache_key"]["description"],
+            "explicit sha256: cache key or raw SHA-256"
+        );
+        assert_eq!(schema["required"], serde_json::json!([]));
+        assert_eq!(
+            schema["anyOf"],
+            serde_json::json!([{"required": ["binary_name"]}, {"required": ["cache_key"]}])
+        );
+    }
+
+    #[test]
+    fn specialized_recovery_tools_expose_anchor_requirements() {
+        let context_slots = schema_for("ghidra_context_api_slots");
+        assert_eq!(
+            context_slots["required"],
+            serde_json::json!(["binary_name", "target_function", "init_function"])
+        );
+
+        let dispatch = schema_for("ghidra_dynamic_dispatch_table");
+        assert_eq!(
+            dispatch["anyOf"],
+            serde_json::json!([
+                {"required": ["table_count_global"]},
+                {"required": ["table_ptr_global"]},
+                {"required": ["builder_start"]},
+                {"required": ["hash_function"]},
+                {"required": ["call_gate_global"]}
+            ])
+        );
     }
 }
 
@@ -749,8 +1014,61 @@ impl ServerHandler for RbmServer {
                 self.ok_json(bins)
             }
 
+            "ghidra_delete" => {
+                let query = self
+                    .opt_s(&params, "cache_key")
+                    .or_else(|| self.opt_s(&params, "binary_name"))
+                    .unwrap_or("");
+                if query.is_empty() {
+                    return Err(err("either binary_name or cache_key is required"));
+                }
+                let result = delete_cached_binary(&self.ghidra_projects, query)
+                    .await
+                    .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
             "ghidra_lock_status" => {
-                let status = serde_json::json!({"count": self.ghidra_projects.lock_count(), "shas": self.ghidra_projects.locked_shas()});
+                let binary_name = self.s(&params, "binary_name");
+                if binary_name.is_empty() {
+                    return Err(err("binary_name is required"));
+                }
+                let held_shas = self.ghidra_projects.held_shas();
+                let status = if let Some(sha256) = parse_sha256_lookup(&binary_name) {
+                    match get_cached_metadata(&self.ghidra_projects, &sha256).await {
+                        Ok(metadata) => serde_json::json!({
+                            "schema": "rbm.ghidra.lock_status.v0",
+                            "cache_key": metadata.cache_key,
+                            "sha256": metadata.sha256,
+                            "program_name": metadata.program_name,
+                            "locked": self.ghidra_projects.is_lock_held(&metadata.sha256),
+                            "held_lock_count": held_shas.len(),
+                            "held_shas": held_shas,
+                        }),
+                        Err(_) => serde_json::json!({
+                            "schema": "rbm.ghidra.lock_status.v0",
+                            "cache_key": format!("sha256:{sha256}"),
+                            "sha256": sha256,
+                            "program_name": null,
+                            "locked": self.ghidra_projects.is_lock_held(&sha256),
+                            "held_lock_count": held_shas.len(),
+                            "held_shas": held_shas,
+                        }),
+                    }
+                } else {
+                    let metadata = get_cached_metadata(&self.ghidra_projects, &binary_name)
+                        .await
+                        .map_err(|e| err(e.to_string()))?;
+                    serde_json::json!({
+                        "schema": "rbm.ghidra.lock_status.v0",
+                        "cache_key": metadata.cache_key,
+                        "sha256": metadata.sha256,
+                        "program_name": metadata.program_name,
+                        "locked": self.ghidra_projects.is_lock_held(&metadata.sha256),
+                        "held_lock_count": held_shas.len(),
+                        "held_shas": held_shas,
+                    })
+                };
                 self.ok_json(status)
             }
 
@@ -807,7 +1125,7 @@ impl ServerHandler for RbmServer {
                     &self.s(&params, "binary_name"),
                     &self.s(&params, "function_address"),
                     self.opt_s(&params, "style"),
-                    self.opt_u64(&params, "token_limit").unwrap_or(1000) as u32,
+                    self.opt_u64(&params, "token_limit").unwrap_or(200) as u32,
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
@@ -886,8 +1204,8 @@ impl ServerHandler for RbmServer {
                     &ctx,
                     &self.s(&params, "binary_name"),
                     &self.s(&params, "query"),
-                    None,
-                    None,
+                    self.opt_u64(&params, "offset"),
+                    self.opt_u64(&params, "limit"),
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
@@ -916,9 +1234,15 @@ impl ServerHandler for RbmServer {
                     scripts_dir: rt.scripts_dir,
                     timeout: self.config.ghidra_call_timeout,
                 };
-                let result = get_data_types(&ctx, &self.s(&params, "binary_name"), "", None, None)
-                    .await
-                    .map_err(|e| err(e.to_string()))?;
+                let result = get_data_types(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    self.opt_s(&params, "query").unwrap_or(""),
+                    self.opt_u64(&params, "offset"),
+                    self.opt_u64(&params, "limit"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
                 self.ok_json(result)
             }
 
@@ -934,8 +1258,8 @@ impl ServerHandler for RbmServer {
                     &ctx,
                     &self.s(&params, "binary_name"),
                     self.opt_s(&params, "query"),
-                    None,
-                    None,
+                    self.opt_u64(&params, "offset"),
+                    self.opt_u64(&params, "limit"),
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
@@ -987,8 +1311,8 @@ impl ServerHandler for RbmServer {
                     &self.s(&params, "binary_name"),
                     &self.s(&params, "function_address"),
                     self.opt_s(&params, "direction"),
-                    None,
-                    None,
+                    self.opt_u64(&params, "offset"),
+                    self.opt_u64(&params, "limit"),
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
@@ -1006,8 +1330,8 @@ impl ServerHandler for RbmServer {
                 let result = gen_callgraph(
                     &ctx,
                     &self.s(&params, "binary_name"),
-                    self.opt_s(&params, "function_address").unwrap_or(""),
-                    None,
+                    &self.s(&params, "function_address"),
+                    self.opt_s(&params, "direction"),
                     self.opt_u64(&params, "depth"),
                     self.opt_u64(&params, "max_nodes"),
                 )
@@ -1047,7 +1371,7 @@ impl ServerHandler for RbmServer {
                     &self.s(&params, "binary_name"),
                     &self.s(&params, "function_address"),
                     self.opt_s(&params, "style"),
-                    false,
+                    self.opt_bool(&params, "include_ops").unwrap_or(false),
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
@@ -1064,8 +1388,8 @@ impl ServerHandler for RbmServer {
                 };
                 let filter = DecompilerCallsFilter {
                     only_external: self.opt_bool(&params, "only_external").unwrap_or(true),
-                    only_indirect: false,
-                    only_api_tag: None,
+                    only_indirect: self.opt_bool(&params, "only_indirect").unwrap_or(false),
+                    only_api_tag: self.opt_s(&params, "only_api_tag").map(String::from),
                 };
                 let result = get_decompiler_calls(
                     &ctx,
@@ -1092,7 +1416,9 @@ impl ServerHandler for RbmServer {
                     &self.s(&params, "binary_name"),
                     &self.s(&params, "function_address"),
                     self.opt_s(&params, "style"),
-                    &DecompilerMemoryFilter { only_writes: false },
+                    &DecompilerMemoryFilter {
+                        only_writes: self.opt_bool(&params, "only_writes").unwrap_or(false),
+                    },
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
@@ -1113,9 +1439,9 @@ impl ServerHandler for RbmServer {
                     &self.s(&params, "function_address"),
                     self.opt_s(&params, "style"),
                     &DecompilerBlockBehaviorFilter {
-                        only_strings: false,
-                        only_api_tag: None,
-                        only_external: false,
+                        only_strings: self.opt_bool(&params, "only_strings").unwrap_or(false),
+                        only_api_tag: self.opt_s(&params, "only_api_tag").map(String::from),
+                        only_external: self.opt_bool(&params, "only_external").unwrap_or(false),
                     },
                 )
                 .await
@@ -1138,7 +1464,7 @@ impl ServerHandler for RbmServer {
                     &self.s(&params, "seed_address"),
                     self.opt_s(&params, "direction"),
                     self.opt_s(&params, "style"),
-                    1000,
+                    self.opt_u64(&params, "max_ops").unwrap_or(80) as u32,
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
@@ -1249,8 +1575,67 @@ impl ServerHandler for RbmServer {
                 self.ok_json(result)
             }
 
+            "ghidra_function_slices" => {
+                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
+                let ctx = FunctionSlicesContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_function_slices(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                    FunctionSlicesOptions {
+                        mode: self.opt_s(&params, "mode").unwrap_or(""),
+                        query: self.opt_s(&params, "query").unwrap_or(""),
+                        range_start: self.opt_s(&params, "range_start").unwrap_or(""),
+                        range_end: self.opt_s(&params, "range_end").unwrap_or(""),
+                        limit: self.opt_u64(&params, "limit").unwrap_or(50) as u32,
+                    },
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_path_digest" => {
+                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
+                let ctx = PathDigestContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_path_digest(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                    PathDigestOptions {
+                        range_start: self.opt_s(&params, "range_start").unwrap_or(""),
+                        range_end: self.opt_s(&params, "range_end").unwrap_or(""),
+                        stop_addresses: self.opt_s(&params, "stop_addresses").unwrap_or(""),
+                        state_register: self.opt_s(&params, "state_register").unwrap_or(""),
+                        max_instructions: self.opt_u64(&params, "max_instructions").unwrap_or(800)
+                            as u32,
+                        max_events: self.opt_u64(&params, "max_events").unwrap_or(200) as u32,
+                    },
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
             "ghidra_context_api_slots" => {
                 let rt = self.ghidra_runtime().map_err(|e| err(e))?;
+                if self.opt_s(&params, "target_function").is_none()
+                    || self.opt_s(&params, "init_function").is_none()
+                {
+                    return Err(err(
+                        "ghidra_context_api_slots requires both target_function and init_function. Use ghidra_list_functions first to choose resolvable function names or addresses.",
+                    ));
+                }
                 let ctx = ContextApiSlotsContext {
                     manager: self.ghidra_projects.clone(),
                     analyze_headless: rt.analyze_headless,
@@ -1294,82 +1679,6 @@ impl ServerHandler for RbmServer {
                 self.ok_json(result)
             }
 
-            "ghidra_rename_function" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = RenameContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = rename_function(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                    &self.s(&params, "new_name"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_set_prototype" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = SetPrototypeContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = set_function_prototype(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                    &self.s(&params, "prototype"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_create_label" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = CreateLabelContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = create_label(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "target_address"),
-                    &self.s(&params, "label_name"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_create_function" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = CreateFunctionContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = create_function(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "target_address"),
-                    &self.s(&params, "function_name"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
             "ghidra_disassemble" => {
                 let rt = self.ghidra_runtime().map_err(|e| err(e))?;
                 let ctx = DisassembleContext {
@@ -1382,8 +1691,8 @@ impl ServerHandler for RbmServer {
                     &ctx,
                     &self.s(&params, "binary_name"),
                     &self.s(&params, "target_address"),
-                    self.opt_u64(&params, "max_instructions").unwrap_or(100) as u32,
-                    false,
+                    self.opt_u64(&params, "max_instructions").unwrap_or(32) as u32,
+                    self.opt_bool(&params, "include_analysis").unwrap_or(false),
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
@@ -1398,14 +1707,30 @@ impl ServerHandler for RbmServer {
                     scripts_dir: rt.scripts_dir,
                     timeout: self.config.ghidra_call_timeout,
                 };
-                let result = get_equates(&ctx, &self.s(&params, "binary_name"), "", None, None)
-                    .await
-                    .map_err(|e| err(e.to_string()))?;
+                let result = get_equates(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    self.opt_s(&params, "query").unwrap_or(""),
+                    self.opt_u64(&params, "offset"),
+                    self.opt_u64(&params, "limit"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
                 self.ok_json(result)
             }
 
             "ghidra_dynamic_dispatch_table" => {
                 let rt = self.ghidra_runtime().map_err(|e| err(e))?;
+                if self.opt_s(&params, "table_count_global").is_none()
+                    && self.opt_s(&params, "table_ptr_global").is_none()
+                    && self.opt_s(&params, "builder_start").is_none()
+                    && self.opt_s(&params, "hash_function").is_none()
+                    && self.opt_s(&params, "call_gate_global").is_none()
+                {
+                    return Err(err(
+                        "ghidra_dynamic_dispatch_table requires at least one anchor: table_count_global, table_ptr_global, builder_start, hash_function, or call_gate_global. Use ghidra_symbols, ghidra_defined_data, and ghidra_list_functions first to identify candidate anchors.",
+                    ));
+                }
                 let ctx = DynamicDispatchTableContext {
                     manager: self.ghidra_projects.clone(),
                     analyze_headless: rt.analyze_headless,
@@ -1449,7 +1774,7 @@ impl ServerHandler for RbmServer {
                     &ctx,
                     &self.s(&params, "binary_name"),
                     &self.s(&params, "address"),
-                    None,
+                    self.opt_u64(&params, "size"),
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;

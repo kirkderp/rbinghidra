@@ -103,11 +103,9 @@ pub enum DecompileError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(DecompileError);
-
 
 #[derive(Debug, Clone)]
 pub struct DecompileContext {

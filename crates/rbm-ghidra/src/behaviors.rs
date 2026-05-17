@@ -61,11 +61,9 @@ pub enum BehaviorsError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(BehaviorsError);
-
 
 #[derive(Debug, Clone)]
 pub struct BehaviorsContext {

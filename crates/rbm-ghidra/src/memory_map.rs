@@ -76,11 +76,9 @@ pub enum MemoryMapError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(MemoryMapError);
-
 
 #[derive(Debug, Clone)]
 pub struct MemoryMapContext {

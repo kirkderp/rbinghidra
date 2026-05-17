@@ -32,7 +32,7 @@ fn make_ctx(tmp: &TempDir, manager: Arc<ProjectManager>) -> ImportsExportsContex
         manager,
         analyze_headless: analyze,
         scripts_dir: scripts,
-        timeout: Duration::from_secs(5),
+        timeout: Duration::from_millis(100),
     }
 }
 
@@ -184,6 +184,7 @@ fn exports_result_serializes_to_stable_shape() {
         offset: 0,
         limit: 25,
         total_matched: 1,
+        truncated: false,
         error_count: 0,
         exports: vec![ExportEntry {
             name: "main".to_string(),
@@ -199,6 +200,7 @@ fn exports_result_serializes_to_stable_shape() {
     assert_eq!(json["offset"], 0);
     assert_eq!(json["limit"], 25);
     assert_eq!(json["total_matched"], 1);
+    assert_eq!(json["truncated"], false);
     assert_eq!(json["error_count"], 0);
     assert_eq!(json["exports"][0]["name"], "main");
     assert_eq!(json["exports"][0]["address"], "0x100003a40");
@@ -215,6 +217,7 @@ fn imports_result_serializes_to_stable_shape() {
         offset: 0,
         limit: 25,
         total_matched: 1,
+        truncated: false,
         error_count: 0,
         imports: vec![ImportEntry {
             name: "printf".to_string(),
@@ -232,6 +235,7 @@ fn imports_result_serializes_to_stable_shape() {
     assert_eq!(json["offset"], 0);
     assert_eq!(json["limit"], 25);
     assert_eq!(json["total_matched"], 1);
+    assert_eq!(json["truncated"], false);
     assert_eq!(json["error_count"], 0);
     assert_eq!(json["imports"][0]["name"], "printf");
     assert_eq!(json["imports"][0]["library"], "libc.so.6");

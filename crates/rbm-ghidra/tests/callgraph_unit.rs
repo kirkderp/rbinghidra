@@ -29,7 +29,7 @@ fn make_callgraph_ctx(tmp: &TempDir, manager: Arc<ProjectManager>) -> CallGraphC
         manager,
         analyze_headless: analyze,
         scripts_dir: scripts,
-        timeout: Duration::from_secs(5),
+        timeout: Duration::from_millis(100),
     }
 }
 

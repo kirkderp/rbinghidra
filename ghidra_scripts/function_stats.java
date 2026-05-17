@@ -7,6 +7,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressRange;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Instruction;
@@ -177,12 +178,12 @@ public class function_stats extends GhidraScript {
             long cyclomaticComplexity = totalBlocks > 0 ? totalBlocks + totalCalls - 1L : 1L;
             if (cyclomaticComplexity < 1) cyclomaticComplexity = 1;
 
-            // Function size
-            long functionSize = 0;
-            try {
-                functionSize = targetFunction.getBody().getNumAddresses();
-            } catch (Exception e) {
-                functionSize = targetFunction.getBody().getMaxAddress().subtract(targetFunction.getBody().getMinAddress()) + 1;
+            long functionSize = functionBodyByteSize(targetFunction);
+            long externalCallCount = 0;
+            for (Long count : importsByLib.values()) {
+                if (count != null) {
+                    externalCallCount += count.longValue();
+                }
             }
 
             envelope.put("function_name", resolvedSymbolName);
@@ -193,7 +194,7 @@ public class function_stats extends GhidraScript {
             envelope.put("basic_block_count", totalBlocks);
             envelope.put("cyclomatic_complexity", cyclomaticComplexity);
             envelope.put("call_count", totalCalls);
-            envelope.put("external_call_count", totalCalls); // approximate
+            envelope.put("external_call_count", externalCallCount);
             envelope.put("memory_reference_count", totalMemoryRefs);
             envelope.put("imports_by_library", importsByLib);
             envelope.put("has_stack_frame", targetFunction.hasCustomVariableStorage());
@@ -212,5 +213,23 @@ public class function_stats extends GhidraScript {
         } else {
             println("[function_stats] computed stats for '" + resolvedSymbolName + "'");
         }
+    }
+
+    private long functionBodyByteSize(Function fn) {
+        long size = 0L;
+        try {
+            for (AddressRange range : fn.getBody().getAddressRanges()) {
+                if (range != null) {
+                    size += range.getMaxAddress().subtract(range.getMinAddress()) + 1L;
+                }
+            }
+        } catch (Exception e) {
+            try {
+                return fn.getBody().getMaxAddress().subtract(fn.getBody().getMinAddress()) + 1L;
+            } catch (Exception ignored) {
+                return 0L;
+            }
+        }
+        return size;
     }
 }

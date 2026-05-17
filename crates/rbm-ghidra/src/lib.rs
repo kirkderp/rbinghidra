@@ -33,14 +33,10 @@ macro_rules! from_warm_path {
 
 pub mod anti_analysis;
 pub mod behaviors;
-pub mod bookmarks;
 pub mod bytes;
 pub mod callgraph;
 pub mod cfg;
-pub mod code_index;
 pub mod context_api_slots;
-pub mod create_function;
-pub mod create_label;
 pub mod data_types;
 pub mod decompile;
 pub mod decompile_meta;
@@ -67,12 +63,7 @@ pub mod namespaces;
 pub mod path_digest;
 pub mod pcode;
 pub mod project;
-pub mod rename_function;
 pub mod search_bytes;
-pub mod search_code;
-pub mod set_bookmark;
-pub mod set_comment;
-pub mod set_prototype;
 pub mod strings;
 pub mod symbols;
 pub mod thunk_target;
@@ -85,29 +76,14 @@ pub use anti_analysis::{
     AntiAnalysisSummary, scan_anti_analysis,
 };
 pub use behaviors::{BehaviorsContext, BehaviorsError, BehaviorsResult, scan_behaviors};
-pub use bookmarks::{
-    BOOKMARKS_SCHEMA, BookmarkEntry, BookmarksContext, BookmarksError, BookmarksResult,
-    get_bookmarks,
-};
 pub use bytes::{ReadBytesContext, ReadBytesError, ReadBytesResult, read_bytes};
 pub use callgraph::{
     CallGraphContext, CallGraphDirection, CallGraphEdge, CallGraphError, CallGraphNode,
     CallGraphResult, gen_callgraph,
 };
 pub use cfg::{CFG_SCHEMA, CfgBlock, CfgContext, CfgEdge, CfgError, CfgResult, gen_cfg};
-pub use code_index::{
-    BuildCodeIndexResult, CODE_INDEX_SCHEMA, CodeIndexContext, CodeIndexEntry, CodeIndexEnvelope,
-    CodeIndexError, build_code_index, index_path_for, is_index_present, read_code_index,
-};
 pub use context_api_slots::{
     CONTEXT_API_SLOTS_SCHEMA, ContextApiSlotsContext, ContextApiSlotsOptions, get_context_api_slots,
-};
-pub use create_function::{
-    CREATE_FUNCTION_SCHEMA, CreateFunctionContext, CreateFunctionError, CreateFunctionResult,
-    create_function,
-};
-pub use create_label::{
-    CREATE_LABEL_SCHEMA, CreateLabelContext, CreateLabelError, CreateLabelResult, create_label,
 };
 pub use data_types::{
     DATA_TYPES_SCHEMA, DataTypeEntry, DataTypesContext, DataTypesError, DataTypesResult,
@@ -200,8 +176,7 @@ pub use pcode::{
     PCODE_SCHEMA, PcodeContext, PcodeError, PcodeOp, PcodeResult, PcodeVarnode, get_pcode,
 };
 pub use project::{
-    ANTI_ANALYSIS_SCRIPT, BEHAVIORS_SCRIPT, BOOKMARKS_SCRIPT, CALLGRAPH_SCRIPT, CFG_SCRIPT,
-    CODE_INDEX_OUTPUT_FILE, CONTEXT_API_SLOTS_SCRIPT, CREATE_FUNCTION_SCRIPT, CREATE_LABEL_SCRIPT,
+    ANTI_ANALYSIS_SCRIPT, BEHAVIORS_SCRIPT, CALLGRAPH_SCRIPT, CFG_SCRIPT, CONTEXT_API_SLOTS_SCRIPT,
     DATA_TYPES_SCRIPT, DECOMPILE_FUNCTION_SCRIPT, DECOMPILE_META_SCRIPT,
     DECOMPILER_BLOCK_BEHAVIOR_SCRIPT, DECOMPILER_CALLS_SCRIPT, DECOMPILER_CFG_SCRIPT,
     DECOMPILER_MEMORY_SCRIPT, DECOMPILER_SLICE_SCRIPT, DEFINED_DATA_SCRIPT, DISASSEMBLE_SCRIPT,
@@ -209,32 +184,14 @@ pub use project::{
     FUNCTION_CHECKPOINTS_SCRIPT, FUNCTION_SLICES_SCRIPT, FUNCTIONS_OUTPUT_FILE, HeadlessError,
     HeadlessOutcome, HeadlessRunner, ImportSpec, LIST_EXPORTS_SCRIPT, LIST_IMPORTS_SCRIPT,
     LIST_XREFS_SCRIPT, MEMORY_MAP_SCRIPT, PATH_DIGEST_SCRIPT, PCODE_SCRIPT, PathValidationError,
-    ProcessSpec, ProjectError, ProjectManager, READ_BYTES_SCRIPT, RENAME_FUNCTION_SCRIPT,
-    SEARCH_BYTES_SCRIPT, SEARCH_STRINGS_SCRIPT, SEARCH_SYMBOLS_SCRIPT, SET_BOOKMARK_SCRIPT,
-    SET_COMMENT_SCRIPT, SET_PROTOTYPE_SCRIPT, THUNK_TARGET_SCRIPT, VARIABLES_SCRIPT,
-    build_import_argv, build_process_argv, cache_key, estimate_eta_ms, hash_file, project_name_for,
+    ProcessSpec, ProjectError, ProjectManager, READ_BYTES_SCRIPT, SEARCH_BYTES_SCRIPT,
+    SEARCH_STRINGS_SCRIPT, SEARCH_SYMBOLS_SCRIPT, THUNK_TARGET_SCRIPT, VARIABLES_SCRIPT,
+    build_import_argv, build_process_argv, cache_key, hash_file, project_name_for,
     sanitize_project_name, stage_script_for_headless, validate_ghidra_environment,
-};
-pub use rename_function::{
-    RENAME_SCHEMA, RenameContext, RenameError, RenameResult, rename_function,
 };
 pub use search_bytes::{
     DEFAULT_MAX_HITS, MAX_HITS_CAP, SEARCH_BYTES_SCHEMA, SearchBytesContext, SearchBytesError,
     SearchBytesResult, resolve_max_hits, search_bytes,
-};
-pub use search_code::{
-    CodeSearchResult, CodeSearchResults, SearchCodeContext, SearchCodeError, SearchCodeOptions,
-    search_code,
-};
-pub use set_bookmark::{
-    SET_BOOKMARK_SCHEMA, SetBookmarkContext, SetBookmarkError, SetBookmarkResult, set_bookmark,
-};
-pub use set_comment::{
-    SET_COMMENT_SCHEMA, SetCommentContext, SetCommentError, SetCommentResult, set_comment,
-};
-pub use set_prototype::{
-    SET_PROTOTYPE_SCHEMA, SetPrototypeContext, SetPrototypeError, SetPrototypeResult,
-    set_function_prototype,
 };
 pub use strings::{
     SearchStringsContext, SearchStringsError, SearchStringsResult, StringEntry, search_strings,

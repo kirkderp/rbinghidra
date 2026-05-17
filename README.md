@@ -6,7 +6,7 @@
 
 MCP server for Ghidra-based binary analysis.
 
-`rbinghidra` manages per-binary Ghidra projects, imports binaries, and runs 41 script-driven queries through `analyzeHeadless`. It operates as a [Model Context Protocol](https://modelcontextprotocol.io) server over stdio, exposing each query as a named tool.
+`rbinghidra` manages per-binary Ghidra projects, imports binaries, and runs 40 Ghidra-backed tools through `analyzeHeadless`. It operates as a [Model Context Protocol](https://modelcontextprotocol.io) server over stdio, exposing each query as a named tool.
 
 ## Tools
 
@@ -16,7 +16,7 @@ MCP server for Ghidra-based binary analysis.
 **Function Discovery**
 - `ghidra_list_functions`  -  function inventory with name filtering
 - `ghidra_imports` / `ghidra_exports` / `ghidra_symbols`  -  import/export/symbol tables
-- `ghidra_namespaces` / `ghidra_data_types` / `ghidra_strings` / `ghidra_memory_map` / `ghidra_defined_data`
+- `ghidra_namespaces` / `ghidra_data_types` / `ghidra_search_strings` / `ghidra_memory_map` / `ghidra_defined_data`
 - `ghidra_function_stats`  -  cyclomatic complexity, instruction count, basic-block count, call count
 - `ghidra_equates`  -  named constants
 
@@ -28,6 +28,8 @@ MCP server for Ghidra-based binary analysis.
 - `ghidra_decompiler_memory`  -  memory access patterns per decompiler block
 - `ghidra_decompiler_block_behavior`  -  behavior classification per decompiler block
 - `ghidra_decompiler_slice`  -  seed-based decompiler slice extraction
+- `ghidra_function_slices`  -  higher-level callsite, field, buffer, indirect, and lineage slices
+- `ghidra_path_digest`  -  compact block/event digest for a function path
 - `ghidra_variables`  -  function parameter and local listings
 - `ghidra_pcode`  -  P-code extraction
 
@@ -40,24 +42,23 @@ MCP server for Ghidra-based binary analysis.
 - `ghidra_callgraph`  -  callgraph traversal with configurable depth and node limits
 - `ghidra_cfg`  -  basic-block control flow graph
 - `ghidra_xrefs`  -  cross-references to or from a function/address
-- `ghidra_decompiler_slice`  -  seed-based slice extraction
 
-**Search & Modify**
+**Search & Recovery**
 - `ghidra_search_bytes`  -  hex pattern search
-- `ghidra_rename_function` / `ghidra_create_label`
-- `ghidra_set_prototype` / `ghidra_create_function` / `ghidra_disassemble`
+- `ghidra_disassemble`
 - `ghidra_context_api_slots` / `ghidra_thunk_target` / `ghidra_dynamic_dispatch_table`
 - `ghidra_read_bytes`
 
-**Import**
+**Import & Cleanup**
 - `ghidra_import`  -  import a binary with optional loader/processor/cspec options
+- `ghidra_delete`  -  delete cached Ghidra project data for a binary
 
 ## Requirements
 
 - **Ghidra 12.1+**, discoverable via `GHIDRA_INSTALL_DIR`
 - **Java 21+** (Ghidra launch scripts)
 - **Rust stable** toolchain
-- Java scripts in `ghidra_scripts/` are pre-compiled to `.class` files alongside source (required for Ghidra 12.1 headless compatibility)
+- Java scripts in `ghidra_scripts/` are pre-compiled to `.class` files alongside source (required by Ghidra 12.1 headless).
 
 ## Quick Start
 

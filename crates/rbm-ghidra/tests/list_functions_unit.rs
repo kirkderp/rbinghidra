@@ -133,6 +133,7 @@ fn result_serializes_to_stable_json_shape() {
         offset: 0,
         limit: DEFAULT_LIMIT,
         total_matched: 1,
+        truncated: false,
         functions: vec![FunctionEntry {
             name: "main".to_string(),
             entry: "0x100003a40".to_string(),
@@ -153,8 +154,10 @@ fn result_serializes_to_stable_json_shape() {
     assert_eq!(json["offset"], 0);
     assert_eq!(json["limit"], DEFAULT_LIMIT);
     assert_eq!(json["total_matched"], 1);
+    assert_eq!(json["truncated"], false);
     assert_eq!(json["functions"][0]["name"], "main");
     assert_eq!(json["functions"][0]["entry"], "0x100003a40");
+    assert!(json["functions"][0].get("address").is_none());
     assert_eq!(json["functions"][0]["size"], 124);
     assert_eq!(json["functions"][0]["is_thunk"], false);
     assert_eq!(json["functions"][0]["is_external"], false);

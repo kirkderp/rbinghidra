@@ -842,16 +842,16 @@ public class dynamic_dispatch_table extends GhidraScript {
         return out;
     }
 
-    private int instructionIndexAt(List<Instruction> instructions, String address, int fallback) {
+    private int instructionIndexAt(List<Instruction> instructions, String address, int defaultValue) {
         if (address == null || address.isEmpty()) {
-            return fallback;
+            return defaultValue;
         }
-        for (int i = Math.max(0, fallback); i < instructions.size(); i++) {
+        for (int i = Math.max(0, defaultValue); i < instructions.size(); i++) {
             if (instructions.get(i).getAddress().toString().equalsIgnoreCase(address)) {
                 return i;
             }
         }
-        return fallback;
+        return defaultValue;
     }
 
     private TableMem tableMem(Instruction ins, int operandIndex) {

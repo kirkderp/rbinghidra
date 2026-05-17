@@ -11,7 +11,6 @@ use tokio::sync::Mutex;
 
 pub const FUNCTIONS_OUTPUT_FILE: &str = "functions.json";
 pub const IMPORT_ERROR_FILE: &str = "import_error.json";
-pub const CODE_INDEX_OUTPUT_FILE: &str = "code_index.json";
 pub const EXTRACT_FUNCTIONS_SCRIPT: &str = "extract_functions.java";
 pub const DECOMPILE_FUNCTION_SCRIPT: &str = "decompile_function.java";
 pub const DECOMPILE_META_SCRIPT: &str = "decompile_meta.java";
@@ -28,18 +27,10 @@ pub const DECOMPILER_CALLS_SCRIPT: &str = "decompiler_calls.java";
 pub const DECOMPILER_BLOCK_BEHAVIOR_SCRIPT: &str = "decompiler_block_behavior.java";
 pub const DECOMPILER_MEMORY_SCRIPT: &str = "decompiler_memory.java";
 pub const DECOMPILER_SLICE_SCRIPT: &str = "decompiler_slice.java";
-pub const DECOMPILE_ALL_FUNCTIONS_SCRIPT: &str = "decompile_all_functions.java";
 pub const ANTI_ANALYSIS_SCRIPT: &str = "anti_analysis.java";
 pub const BEHAVIORS_SCRIPT: &str = "behaviors.java";
 pub const SEARCH_BYTES_SCRIPT: &str = "search_bytes.java";
 pub const DEFINED_DATA_SCRIPT: &str = "defined_data.java";
-pub const RENAME_FUNCTION_SCRIPT: &str = "rename_function.java";
-pub const SET_PROTOTYPE_SCRIPT: &str = "set_function_prototype.java";
-pub const CREATE_LABEL_SCRIPT: &str = "create_label.java";
-pub const CREATE_FUNCTION_SCRIPT: &str = "create_function.java";
-pub const SET_COMMENT_SCRIPT: &str = "set_comment.java";
-pub const BOOKMARKS_SCRIPT: &str = "bookmarks.java";
-pub const SET_BOOKMARK_SCRIPT: &str = "set_bookmark.java";
 pub const THUNK_TARGET_SCRIPT: &str = "thunk_target.java";
 pub const PCODE_SCRIPT: &str = "pcode.java";
 pub const FUNCTION_CHECKPOINTS_SCRIPT: &str = "function_checkpoints.java";
@@ -238,11 +229,6 @@ impl ProjectManager {
     }
 
     #[must_use]
-    pub fn code_index_path(&self, sha256_hex: &str) -> PathBuf {
-        self.project_dir(sha256_hex).join(CODE_INDEX_OUTPUT_FILE)
-    }
-
-    #[must_use]
     pub fn runtime_scripts_dir(&self) -> PathBuf {
         self.ghidra_dir().join("runtime_scripts")
     }
@@ -286,6 +272,34 @@ impl ProjectManager {
     #[must_use]
     pub fn locked_shas(&self) -> Vec<String> {
         self.locks.iter().map(|e| e.key().clone()).collect()
+    }
+
+    #[must_use]
+    pub fn is_lock_held(&self, sha256_hex: &str) -> bool {
+        let Some(lock) = self
+            .locks
+            .get(sha256_hex)
+            .map(|entry| entry.value().clone())
+        else {
+            return false;
+        };
+        lock.try_lock_owned().is_err()
+    }
+
+    #[must_use]
+    pub fn held_shas(&self) -> Vec<String> {
+        self.locks
+            .iter()
+            .filter_map(|entry| {
+                let sha = entry.key().clone();
+                let lock = entry.value().clone();
+                if lock.try_lock_owned().is_err() {
+                    Some(sha)
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
@@ -513,13 +527,6 @@ pub fn sanitize_project_name(input: &str) -> String {
             }
         })
         .collect()
-}
-
-#[must_use]
-pub fn estimate_eta_ms(file_size_bytes: u64) -> u64 {
-    let mb = file_size_bytes.div_ceil(1024 * 1024).max(1);
-    let estimate = mb.saturating_mul(2_500);
-    estimate.clamp(5_000, 600_000)
 }
 
 /// Compute a SHA-256 digest for a regular file.

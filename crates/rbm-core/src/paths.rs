@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::error::{ToolError, ToolResult};
 
@@ -20,13 +20,13 @@ impl CachePaths {
     pub fn from_env() -> ToolResult<Self> {
         if let Ok(val) = std::env::var("RBM_CACHE_DIR") {
             if val.is_empty() {
-                return Err(ToolError::Other(
-                    "RBM_CACHE_DIR must not be empty".into(),
-                ));
+                return Err(ToolError::Other("RBM_CACHE_DIR must not be empty".into()));
             }
-            return Ok(Self::new(PathBuf::from(val)));
+            return Ok(Self::new(absolute_cache_root(PathBuf::from(val))?));
         }
-        Ok(Self::new(PathBuf::from("./rbinghidra-cache")))
+        Ok(Self::new(absolute_cache_root(PathBuf::from(
+            "./rbinghidra-cache",
+        ))?))
     }
 
     #[must_use]
@@ -50,8 +50,8 @@ impl CachePaths {
     }
 
     #[must_use]
-    pub fn r2_sessions_dir(&self) -> PathBuf {
-        self.root.join("r2_sessions")
+    pub fn sessions_dir(&self) -> PathBuf {
+        self.root.join("sessions")
     }
 
     #[must_use]
@@ -68,11 +68,37 @@ impl CachePaths {
         for dir in [
             self.overflow_dir(),
             self.ghidra_dir(),
-            self.r2_sessions_dir(),
+            self.sessions_dir(),
             self.tmp_dir(),
         ] {
             std::fs::create_dir_all(&dir).map_err(|e| ToolError::io(&dir, e))?;
         }
         Ok(())
     }
+}
+
+fn absolute_cache_root(path: PathBuf) -> ToolResult<PathBuf> {
+    let path = if path.is_absolute() {
+        path
+    } else {
+        let cwd = std::env::current_dir().map_err(|e| ToolError::io(".", e))?;
+        cwd.join(path)
+    };
+    Ok(normalize_lexically(&path))
+}
+
+fn normalize_lexically(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::Normal(_) | Component::RootDir | Component::Prefix(_) => {
+                out.push(component.as_os_str());
+            }
+        }
+    }
+    out
 }

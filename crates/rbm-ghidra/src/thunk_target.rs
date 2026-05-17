@@ -66,11 +66,9 @@ pub enum ThunkTargetError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(ThunkTargetError);
-
 
 #[derive(Debug, Clone)]
 pub struct ThunkTargetContext {

@@ -27,7 +27,7 @@ fn make_bytes_ctx(tmp: &TempDir, manager: Arc<ProjectManager>) -> ReadBytesConte
         manager,
         analyze_headless: analyze,
         scripts_dir: scripts,
-        timeout: Duration::from_secs(5),
+        timeout: Duration::from_millis(100),
     }
 }
 

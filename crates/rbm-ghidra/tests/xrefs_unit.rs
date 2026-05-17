@@ -28,7 +28,7 @@ fn make_xrefs_ctx(tmp: &TempDir, manager: Arc<ProjectManager>) -> XrefsContext {
         manager,
         analyze_headless: analyze,
         scripts_dir: scripts,
-        timeout: Duration::from_secs(5),
+        timeout: Duration::from_millis(100),
     }
 }
 
@@ -159,6 +159,7 @@ fn xrefs_result_serializes_to_stable_shape() {
         offset: 0,
         limit: 25,
         total_matched: 1,
+        truncated: false,
         error_count: 0,
         xrefs: vec![XrefEntry {
             from_address: "0x1001".to_string(),
@@ -179,6 +180,7 @@ fn xrefs_result_serializes_to_stable_shape() {
     assert_eq!(json["offset"], 0);
     assert_eq!(json["limit"], 25);
     assert_eq!(json["total_matched"], 1);
+    assert_eq!(json["truncated"], false);
     assert_eq!(json["error_count"], 0);
     assert_eq!(json["xrefs"][0]["from_address"], "0x1001");
     assert_eq!(json["xrefs"][0]["ref_type"], "UNCONDITIONAL_CALL");

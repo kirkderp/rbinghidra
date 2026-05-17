@@ -117,11 +117,9 @@ pub enum DisassembleError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(DisassembleError);
-
 
 #[derive(Debug, Clone)]
 pub struct DisassembleContext {

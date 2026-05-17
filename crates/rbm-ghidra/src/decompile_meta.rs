@@ -134,11 +134,9 @@ pub enum DecompileMetaError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(DecompileMetaError);
-
 
 #[derive(Debug, Clone)]
 pub struct DecompileMetaContext {

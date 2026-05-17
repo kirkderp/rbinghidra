@@ -2,17 +2,19 @@ use rbm_core::ToolError;
 
 #[test]
 fn not_implemented_formats_with_tool_name() {
-    let err = ToolError::NotImplemented { tool: "r2_open" };
-    assert_eq!(err.to_string(), "tool not implemented yet: r2_open");
+    let err = ToolError::NotImplemented {
+        tool: "ghidra_probe",
+    };
+    assert_eq!(err.to_string(), "tool not implemented yet: ghidra_probe");
 }
 
 #[test]
 fn backend_helper_includes_backend_label() {
-    let err = ToolError::backend("rbm-r2", "session already open");
+    let err = ToolError::backend("rbinghidra", "project already open");
     match err {
         ToolError::Backend { backend, message } => {
-            assert_eq!(backend, "rbm-r2");
-            assert_eq!(message, "session already open");
+            assert_eq!(backend, "rbinghidra");
+            assert_eq!(message, "project already open");
         }
         _ => panic!("wrong variant"),
     }

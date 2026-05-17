@@ -1146,20 +1146,20 @@ public class function_slices extends GhidraScript {
         }
     }
 
-    private int parsePositiveInt(String raw, int fallback, int max) {
+    private int parsePositiveInt(String raw, int defaultValue, int max) {
         try {
             int value = Integer.parseInt(raw);
             if (value <= 0) {
-                return fallback;
+                return defaultValue;
             }
             return Math.min(value, max);
         } catch (Exception ignored) {
-            return fallback;
+            return defaultValue;
         }
     }
 
-    private String emptyDefault(String value, String fallback) {
-        return value == null || value.trim().isEmpty() ? fallback : value.trim();
+    private String emptyDefault(String value, String defaultValue) {
+        return value == null || value.trim().isEmpty() ? defaultValue : value.trim();
     }
 
     private void writeEnvelope(String outputPath, Map<String, Object> envelope) throws Exception {

@@ -78,11 +78,9 @@ pub enum AntiAnalysisError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(AntiAnalysisError);
-
 
 #[derive(Debug, Clone)]
 pub struct AntiAnalysisContext {

@@ -79,11 +79,9 @@ pub enum EquatesError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(EquatesError);
-
 
 #[derive(Debug, Clone)]
 pub struct EquatesContext {

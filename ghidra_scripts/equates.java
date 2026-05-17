@@ -107,14 +107,14 @@ public class equates extends GhidraScript {
         }
     }
 
-    private int parseInt(String[] args, int index, int fallback) {
+    private int parseInt(String[] args, int index, int defaultValue) {
         if (args.length <= index || args[index] == null || args[index].trim().isEmpty()) {
-            return fallback;
+            return defaultValue;
         }
         try {
             return Integer.parseInt(args[index].trim());
         } catch (NumberFormatException e) {
-            return fallback;
+            return defaultValue;
         }
     }
 }

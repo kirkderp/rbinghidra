@@ -183,19 +183,19 @@ public class defined_data extends GhidraScript {
         return entry;
     }
 
-    private long parseLong(String[] args, int index, long fallback) {
+    private long parseLong(String[] args, int index, long defaultValue) {
         if (index >= args.length) {
-            return fallback;
+            return defaultValue;
         }
         String raw = args[index];
         if (raw == null || raw.isEmpty()) {
-            return fallback;
+            return defaultValue;
         }
         try {
             return Long.parseLong(raw);
         } catch (NumberFormatException e) {
-            printerr("[defined_data] could not parse '" + raw + "' as long; using default " + fallback);
-            return fallback;
+            printerr("[defined_data] could not parse '" + raw + "' as long; using default " + defaultValue);
+            return defaultValue;
         }
     }
 

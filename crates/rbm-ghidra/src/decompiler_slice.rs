@@ -101,11 +101,9 @@ pub enum DecompilerSliceError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(DecompilerSliceError);
-
 
 #[derive(Debug, Clone)]
 pub struct DecompilerSliceContext {

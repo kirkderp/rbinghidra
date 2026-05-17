@@ -73,11 +73,9 @@ pub enum DataTypesError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(DataTypesError);
-
 
 #[derive(Debug, Clone)]
 pub struct DataTypesContext {

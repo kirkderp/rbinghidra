@@ -24,7 +24,7 @@ fn make_cfg_ctx(tmp: &TempDir, manager: Arc<ProjectManager>) -> CfgContext {
         manager,
         analyze_headless: analyze,
         scripts_dir: scripts,
-        timeout: Duration::from_secs(5),
+        timeout: Duration::from_millis(100),
     }
 }
 

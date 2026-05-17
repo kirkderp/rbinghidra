@@ -127,11 +127,9 @@ pub enum CallGraphError {
         #[source]
         source: serde_json::Error,
     },
-
 }
 
 from_warm_path!(CallGraphError);
-
 
 #[derive(Debug, Clone)]
 pub struct CallGraphContext {

@@ -113,8 +113,8 @@ fn get_function_slices_rejects_invalid_mode() {
         .unwrap_err();
 
         match err {
-            DecompilerCfgError::InvalidSimplificationStyle { style } => assert_eq!(style, "nope"),
-            other => panic!("expected InvalidSimplificationStyle, got {other:?}"),
+            DecompilerCfgError::InvalidFunctionSlicesMode { mode } => assert_eq!(mode, "nope"),
+            other => panic!("expected InvalidFunctionSlicesMode, got {other:?}"),
         }
     });
 }
