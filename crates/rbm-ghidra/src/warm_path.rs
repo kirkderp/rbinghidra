@@ -102,7 +102,7 @@ pub async fn discover_program_name(project_dir: &Path, preferred: &str) -> Strin
     };
     let text = String::from_utf8_lossy(&bytes);
     let names: Vec<&str> = text.lines().filter_map(index_line_program_name).collect();
-    if names.iter().any(|name| *name == preferred) {
+    if names.contains(&preferred) {
         return preferred.to_string();
     }
     if let Some(name) = names.iter().find(|name| name.starts_with(preferred)) {

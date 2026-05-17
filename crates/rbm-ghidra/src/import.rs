@@ -224,16 +224,16 @@ pub async fn import_binary_with_options(
         ));
     }
 
-    if !options.has_explicit_loader_options() {
-        if let Some(failure) = read_import_failure(&error_path).await? {
-            return Ok(ImportReport::failed(
-                key,
-                binary_name,
-                &project_dir,
-                &output_path,
-                failure.error,
-            ));
-        }
+    if !options.has_explicit_loader_options()
+        && let Some(failure) = read_import_failure(&error_path).await?
+    {
+        return Ok(ImportReport::failed(
+            key,
+            binary_name,
+            &project_dir,
+            &output_path,
+            failure.error,
+        ));
     }
     remove_stale_output(&output_path).await?;
     remove_import_failure(&error_path).await?;
@@ -268,25 +268,8 @@ pub async fn import_binary_with_options(
             }
             remove_stale_output(&output_path).await?;
             remove_import_failure(&error_path).await?;
-            let runtime_scripts_dir = ctx.manager.runtime_scripts_dir();
-            stage_script_for_headless(
-                &runtime_scripts_dir,
-                &ctx.scripts_dir,
-                EXTRACT_FUNCTIONS_SCRIPT,
-            )
-            .await?;
-            let spec = ImportSpec {
-                project_dir: project_dir.clone(),
-                project_name: project_name_for(binary_path),
-                binary: binary_path.to_path_buf(),
-                loader: options.loader.clone(),
-                processor: options.processor.clone(),
-                cspec: options.cspec.clone(),
-                loader_base_addr: options.loader_base_addr.clone(),
-                script_dir: runtime_scripts_dir,
-                script_name: EXTRACT_FUNCTIONS_SCRIPT.to_string(),
-                script_args: vec![output_path.display().to_string()],
-            };
+            let spec =
+                build_import_spec(ctx, binary_path, options, &project_dir, &output_path).await?;
             let runner = HeadlessRunner {
                 analyze_headless: ctx.analyze_headless.clone(),
                 timeout: ctx.timeout,
@@ -301,6 +284,35 @@ pub async fn import_binary_with_options(
             ))
         }
     }
+}
+
+async fn build_import_spec(
+    ctx: &ImportContext,
+    binary_path: &Path,
+    options: &ImportOptions,
+    project_dir: &Path,
+    output_path: &Path,
+) -> Result<ImportSpec, ImportError> {
+    let runtime_scripts_dir = ctx.manager.runtime_scripts_dir();
+    stage_script_for_headless(
+        &runtime_scripts_dir,
+        &ctx.scripts_dir,
+        EXTRACT_FUNCTIONS_SCRIPT,
+    )
+    .await?;
+
+    Ok(ImportSpec {
+        project_dir: project_dir.to_path_buf(),
+        project_name: project_name_for(binary_path),
+        binary: binary_path.to_path_buf(),
+        loader: options.loader.clone(),
+        processor: options.processor.clone(),
+        cspec: options.cspec.clone(),
+        loader_base_addr: options.loader_base_addr.clone(),
+        script_dir: runtime_scripts_dir,
+        script_name: EXTRACT_FUNCTIONS_SCRIPT.to_string(),
+        script_args: vec![output_path.display().to_string()],
+    })
 }
 
 async fn cached_output_is_ready(output_path: &Path) -> Result<bool, ImportError> {

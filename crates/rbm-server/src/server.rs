@@ -761,6 +761,847 @@ fn err(msg: impl Into<String>) -> ErrorData {
     ErrorData::new(rmcp::model::ErrorCode::INTERNAL_ERROR, msg.into(), None)
 }
 
+impl ServerHandler for RbmServer {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::new("rbinghidra", env!("CARGO_PKG_VERSION")))
+            .with_instructions(format!(
+                "rbinghidra Ghidra MCP server. {} tools available.",
+                self.tools.len()
+            ))
+    }
+
+    async fn list_tools(
+        &self,
+        _: Option<PaginatedRequestParams>,
+        _: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        Ok(ListToolsResult {
+            tools: self.tools.clone(),
+            meta: None,
+            next_cursor: None,
+        })
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        _: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let name = request.name.as_ref();
+        let params = request.arguments.unwrap_or_default();
+
+        match name {
+            "ghidra_health" => {
+                let health = probe_at(self.config.ghidra_install_dir.as_deref());
+                self.ok_json(health)
+            }
+
+            "ghidra_import" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = ImportContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_import_timeout,
+                };
+                let binary = PathBuf::from(self.s(&params, "binary_path"));
+                let options = ImportOptions {
+                    loader: self.opt_s(&params, "loader").map(String::from),
+                    processor: self.opt_s(&params, "processor").map(String::from),
+                    cspec: self.opt_s(&params, "cspec").map(String::from),
+                    loader_base_addr: self.opt_s(&params, "loader_base_addr").map(String::from),
+                };
+                let report = import_binary_with_options(&ctx, &binary, &options)
+                    .await
+                    .map_err(|e| err(e.to_string()))?;
+                self.ok_json(report)
+            }
+
+            "ghidra_inventory" => {
+                let bins =
+                    list_cached_binaries(&self.ghidra_projects, self.opt_s(&params, "name_filter"))
+                        .await
+                        .map_err(|e| err(e.to_string()))?;
+                self.ok_json(bins)
+            }
+
+            "ghidra_delete" => {
+                let query = self
+                    .opt_s(&params, "cache_key")
+                    .or_else(|| self.opt_s(&params, "binary_name"))
+                    .unwrap_or("");
+                if query.is_empty() {
+                    return Err(err("either binary_name or cache_key is required"));
+                }
+                let result = delete_cached_binary(&self.ghidra_projects, query)
+                    .await
+                    .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_lock_status" => {
+                let binary_name = self.s(&params, "binary_name");
+                if binary_name.is_empty() {
+                    return Err(err("binary_name is required"));
+                }
+                let held_shas = self.ghidra_projects.held_shas();
+                let status = if let Some(sha256) = parse_sha256_lookup(&binary_name) {
+                    match get_cached_metadata(&self.ghidra_projects, &sha256).await {
+                        Ok(metadata) => serde_json::json!({
+                            "schema": "rbm.ghidra.lock_status.v0",
+                            "cache_key": metadata.cache_key,
+                            "sha256": metadata.sha256,
+                            "program_name": metadata.program_name,
+                            "locked": self.ghidra_projects.is_lock_held(&metadata.sha256),
+                            "held_lock_count": held_shas.len(),
+                            "held_shas": held_shas,
+                        }),
+                        Err(_) => serde_json::json!({
+                            "schema": "rbm.ghidra.lock_status.v0",
+                            "cache_key": format!("sha256:{sha256}"),
+                            "sha256": sha256,
+                            "program_name": null,
+                            "locked": self.ghidra_projects.is_lock_held(&sha256),
+                            "held_lock_count": held_shas.len(),
+                            "held_shas": held_shas,
+                        }),
+                    }
+                } else {
+                    let metadata = get_cached_metadata(&self.ghidra_projects, &binary_name)
+                        .await
+                        .map_err(|e| err(e.to_string()))?;
+                    serde_json::json!({
+                        "schema": "rbm.ghidra.lock_status.v0",
+                        "cache_key": metadata.cache_key,
+                        "sha256": metadata.sha256,
+                        "program_name": metadata.program_name,
+                        "locked": self.ghidra_projects.is_lock_held(&metadata.sha256),
+                        "held_lock_count": held_shas.len(),
+                        "held_shas": held_shas,
+                    })
+                };
+                self.ok_json(status)
+            }
+
+            "ghidra_cached_metadata" => {
+                let result =
+                    get_cached_metadata(&self.ghidra_projects, &self.s(&params, "binary_name"))
+                        .await
+                        .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_list_functions" => {
+                let result = list_functions(
+                    &self.ghidra_projects,
+                    &self.s(&params, "binary_name"),
+                    self.opt_s(&params, "query"),
+                    self.opt_u64(&params, "offset"),
+                    self.opt_u64(&params, "limit"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_decompile" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = DecompileContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = decompile_function(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                    self.opt_s(&params, "style"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_decompile_meta" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = DecompileMetaContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_decompile_meta(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                    self.opt_s(&params, "style"),
+                    self.opt_u64(&params, "token_limit").unwrap_or(200) as u32,
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_imports" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = ImportsExportsContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = list_imports(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    self.opt_s(&params, "query"),
+                    self.opt_u64(&params, "offset"),
+                    self.opt_u64(&params, "limit"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_exports" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = ImportsExportsContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = list_exports(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    self.opt_s(&params, "query"),
+                    self.opt_u64(&params, "offset"),
+                    self.opt_u64(&params, "limit"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_search_strings" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = SearchStringsContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = search_strings(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    self.opt_s(&params, "query"),
+                    self.opt_u64(&params, "offset"),
+                    self.opt_u64(&params, "limit"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_symbols" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = SymbolsContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = search_symbols(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "query"),
+                    self.opt_u64(&params, "offset"),
+                    self.opt_u64(&params, "limit"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_namespaces" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = NamespacesContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = list_namespaces(&ctx, &self.s(&params, "binary_name"))
+                    .await
+                    .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_data_types" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = DataTypesContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_data_types(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    self.opt_s(&params, "query").unwrap_or(""),
+                    self.opt_u64(&params, "offset"),
+                    self.opt_u64(&params, "limit"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_defined_data" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = DefinedDataContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = list_defined_data(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    self.opt_s(&params, "query"),
+                    self.opt_u64(&params, "offset"),
+                    self.opt_u64(&params, "limit"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_memory_map" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = MemoryMapContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_memory_map(&ctx, &self.s(&params, "binary_name"))
+                    .await
+                    .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_function_stats" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = FunctionStatsContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_function_stats(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_xrefs" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = XrefsContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = list_xrefs(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                    self.opt_s(&params, "direction"),
+                    self.opt_u64(&params, "offset"),
+                    self.opt_u64(&params, "limit"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_callgraph" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = CallGraphContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = gen_callgraph(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                    self.opt_s(&params, "direction"),
+                    self.opt_u64(&params, "depth"),
+                    self.opt_u64(&params, "max_nodes"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_cfg" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = CfgContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = gen_cfg(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_decompiler_cfg" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = DecompilerCfgContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = gen_decompiler_cfg(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                    self.opt_s(&params, "style"),
+                    self.opt_bool(&params, "include_ops").unwrap_or(false),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_decompiler_calls" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = DecompilerCallsContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let filter = DecompilerCallsFilter {
+                    only_external: self.opt_bool(&params, "only_external").unwrap_or(true),
+                    only_indirect: self.opt_bool(&params, "only_indirect").unwrap_or(false),
+                    only_api_tag: self.opt_s(&params, "only_api_tag").map(String::from),
+                };
+                let result = get_decompiler_calls(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                    self.opt_s(&params, "style"),
+                    &filter,
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_decompiler_memory" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = DecompilerMemoryContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_decompiler_memory(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                    self.opt_s(&params, "style"),
+                    &DecompilerMemoryFilter {
+                        only_writes: self.opt_bool(&params, "only_writes").unwrap_or(false),
+                    },
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_decompiler_block_behavior" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = DecompilerBlockBehaviorContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_decompiler_block_behavior(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                    self.opt_s(&params, "style"),
+                    &DecompilerBlockBehaviorFilter {
+                        only_strings: self.opt_bool(&params, "only_strings").unwrap_or(false),
+                        only_api_tag: self.opt_s(&params, "only_api_tag").map(String::from),
+                        only_external: self.opt_bool(&params, "only_external").unwrap_or(false),
+                    },
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_decompiler_slice" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = DecompilerSliceContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_decompiler_slice(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                    &self.s(&params, "seed_address"),
+                    self.opt_s(&params, "direction"),
+                    self.opt_s(&params, "style"),
+                    self.opt_u64(&params, "max_ops").unwrap_or(80) as u32,
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_variables" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = VariablesContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_variables(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_pcode" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = PcodeContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_pcode(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                    self.opt_s(&params, "style"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_search_bytes" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = SearchBytesContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = search_bytes(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "hex_pattern"),
+                    self.opt_u64(&params, "max_hits"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_behaviors" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = BehaviorsContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = scan_behaviors(&ctx, &self.s(&params, "binary_name"))
+                    .await
+                    .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_anti_analysis" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = AntiAnalysisContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = scan_anti_analysis(&ctx, &self.s(&params, "binary_name"))
+                    .await
+                    .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_function_checkpoints" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = FunctionCheckpointsContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_function_checkpoints(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                    self.opt_s(&params, "ranges"),
+                    self.opt_s(&params, "style"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_function_slices" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = FunctionSlicesContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_function_slices(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                    FunctionSlicesOptions {
+                        mode: self.opt_s(&params, "mode").unwrap_or(""),
+                        query: self.opt_s(&params, "query").unwrap_or(""),
+                        range_start: self.opt_s(&params, "range_start").unwrap_or(""),
+                        range_end: self.opt_s(&params, "range_end").unwrap_or(""),
+                        limit: self.opt_u64(&params, "limit").unwrap_or(50) as u32,
+                    },
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_path_digest" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = PathDigestContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_path_digest(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                    PathDigestOptions {
+                        range_start: self.opt_s(&params, "range_start").unwrap_or(""),
+                        range_end: self.opt_s(&params, "range_end").unwrap_or(""),
+                        stop_addresses: self.opt_s(&params, "stop_addresses").unwrap_or(""),
+                        state_register: self.opt_s(&params, "state_register").unwrap_or(""),
+                        max_instructions: self.opt_u64(&params, "max_instructions").unwrap_or(800)
+                            as u32,
+                        max_events: self.opt_u64(&params, "max_events").unwrap_or(200) as u32,
+                    },
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_context_api_slots" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                if self.opt_s(&params, "target_function").is_none()
+                    || self.opt_s(&params, "init_function").is_none()
+                {
+                    return Err(err(
+                        "ghidra_context_api_slots requires both target_function and init_function. Use ghidra_list_functions first to choose resolvable function names or addresses.",
+                    ));
+                }
+                let ctx = ContextApiSlotsContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_context_api_slots(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    rbm_ghidra::ContextApiSlotsOptions {
+                        target_function: self.opt_s(&params, "target_function").unwrap_or(""),
+                        init_function: self.opt_s(&params, "init_function").unwrap_or(""),
+                        export_resolver: self.opt_s(&params, "export_resolver").unwrap_or(""),
+                        module_resolver: self.opt_s(&params, "module_resolver").unwrap_or(""),
+                        context_stack_offset: self
+                            .opt_s(&params, "context_stack_offset")
+                            .unwrap_or(""),
+                        limit: self.opt_u64(&params, "limit").unwrap_or(200) as u32,
+                    },
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_thunk_target" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = ThunkTargetContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_thunk_target(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "function_address"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_disassemble" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = DisassembleContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = disassemble_function(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "target_address"),
+                    self.opt_u64(&params, "max_instructions").unwrap_or(32) as u32,
+                    self.opt_bool(&params, "include_analysis").unwrap_or(false),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_equates" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = EquatesContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_equates(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    self.opt_s(&params, "query").unwrap_or(""),
+                    self.opt_u64(&params, "offset"),
+                    self.opt_u64(&params, "limit"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_dynamic_dispatch_table" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                if self.opt_s(&params, "table_count_global").is_none()
+                    && self.opt_s(&params, "table_ptr_global").is_none()
+                    && self.opt_s(&params, "builder_start").is_none()
+                    && self.opt_s(&params, "hash_function").is_none()
+                    && self.opt_s(&params, "call_gate_global").is_none()
+                {
+                    return Err(err(
+                        "ghidra_dynamic_dispatch_table requires at least one anchor: table_count_global, table_ptr_global, builder_start, hash_function, or call_gate_global. Use ghidra_symbols, ghidra_defined_data, and ghidra_list_functions first to identify candidate anchors.",
+                    ));
+                }
+                let ctx = DynamicDispatchTableContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = recover_dynamic_dispatch_table(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    DynamicDispatchTableOptions {
+                        table_count_global: self.opt_s(&params, "table_count_global").unwrap_or(""),
+                        table_ptr_global: self.opt_s(&params, "table_ptr_global").unwrap_or(""),
+                        builder_start: self.opt_s(&params, "builder_start").unwrap_or(""),
+                        builder_end: self.opt_s(&params, "builder_end").unwrap_or(""),
+                        hash_function: self.opt_s(&params, "hash_function").unwrap_or(""),
+                        call_gate_global: self.opt_s(&params, "call_gate_global").unwrap_or(""),
+                        lookup_hashes: self.opt_s(&params, "lookup_hashes").unwrap_or(""),
+                        adapter_function: self.opt_s(&params, "adapter_function").unwrap_or(""),
+                        hash_seed: self.opt_s(&params, "hash_seed").unwrap_or(""),
+                        hash_multiplier: self.opt_s(&params, "hash_multiplier").unwrap_or(""),
+                        candidate_names: self.opt_s(&params, "candidate_names").unwrap_or(""),
+                        max_instructions: self.opt_u64(&params, "max_instructions").unwrap_or(15000)
+                            as u32,
+                        limit: self.opt_u64(&params, "limit").unwrap_or(100) as u32,
+                    },
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_read_bytes" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = ReadBytesContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = read_bytes(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "address"),
+                    self.opt_u64(&params, "size"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            _ => Err(rmcp::model::ErrorData::new(
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                format!("unknown tool: {name}"),
+                None,
+            )),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -946,846 +1787,5 @@ mod tests {
                 {"required": ["call_gate_global"]}
             ])
         );
-    }
-}
-
-impl ServerHandler for RbmServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new("rbinghidra", env!("CARGO_PKG_VERSION")))
-            .with_instructions(format!(
-                "rbinghidra Ghidra MCP server. {} tools available.",
-                self.tools.len()
-            ))
-    }
-
-    async fn list_tools(
-        &self,
-        _: Option<PaginatedRequestParams>,
-        _: RequestContext<RoleServer>,
-    ) -> Result<ListToolsResult, ErrorData> {
-        Ok(ListToolsResult {
-            tools: self.tools.clone(),
-            meta: None,
-            next_cursor: None,
-        })
-    }
-
-    async fn call_tool(
-        &self,
-        request: CallToolRequestParams,
-        _: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let name = request.name.as_ref();
-        let params = request.arguments.unwrap_or_default();
-
-        match name {
-            "ghidra_health" => {
-                let health = probe_at(self.config.ghidra_install_dir.as_deref());
-                self.ok_json(health)
-            }
-
-            "ghidra_import" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = ImportContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_import_timeout,
-                };
-                let binary = PathBuf::from(self.s(&params, "binary_path"));
-                let options = ImportOptions {
-                    loader: self.opt_s(&params, "loader").map(String::from),
-                    processor: self.opt_s(&params, "processor").map(String::from),
-                    cspec: self.opt_s(&params, "cspec").map(String::from),
-                    loader_base_addr: self.opt_s(&params, "loader_base_addr").map(String::from),
-                };
-                let report = import_binary_with_options(&ctx, &binary, &options)
-                    .await
-                    .map_err(|e| err(e.to_string()))?;
-                self.ok_json(report)
-            }
-
-            "ghidra_inventory" => {
-                let bins =
-                    list_cached_binaries(&self.ghidra_projects, self.opt_s(&params, "name_filter"))
-                        .await
-                        .map_err(|e| err(e.to_string()))?;
-                self.ok_json(bins)
-            }
-
-            "ghidra_delete" => {
-                let query = self
-                    .opt_s(&params, "cache_key")
-                    .or_else(|| self.opt_s(&params, "binary_name"))
-                    .unwrap_or("");
-                if query.is_empty() {
-                    return Err(err("either binary_name or cache_key is required"));
-                }
-                let result = delete_cached_binary(&self.ghidra_projects, query)
-                    .await
-                    .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_lock_status" => {
-                let binary_name = self.s(&params, "binary_name");
-                if binary_name.is_empty() {
-                    return Err(err("binary_name is required"));
-                }
-                let held_shas = self.ghidra_projects.held_shas();
-                let status = if let Some(sha256) = parse_sha256_lookup(&binary_name) {
-                    match get_cached_metadata(&self.ghidra_projects, &sha256).await {
-                        Ok(metadata) => serde_json::json!({
-                            "schema": "rbm.ghidra.lock_status.v0",
-                            "cache_key": metadata.cache_key,
-                            "sha256": metadata.sha256,
-                            "program_name": metadata.program_name,
-                            "locked": self.ghidra_projects.is_lock_held(&metadata.sha256),
-                            "held_lock_count": held_shas.len(),
-                            "held_shas": held_shas,
-                        }),
-                        Err(_) => serde_json::json!({
-                            "schema": "rbm.ghidra.lock_status.v0",
-                            "cache_key": format!("sha256:{sha256}"),
-                            "sha256": sha256,
-                            "program_name": null,
-                            "locked": self.ghidra_projects.is_lock_held(&sha256),
-                            "held_lock_count": held_shas.len(),
-                            "held_shas": held_shas,
-                        }),
-                    }
-                } else {
-                    let metadata = get_cached_metadata(&self.ghidra_projects, &binary_name)
-                        .await
-                        .map_err(|e| err(e.to_string()))?;
-                    serde_json::json!({
-                        "schema": "rbm.ghidra.lock_status.v0",
-                        "cache_key": metadata.cache_key,
-                        "sha256": metadata.sha256,
-                        "program_name": metadata.program_name,
-                        "locked": self.ghidra_projects.is_lock_held(&metadata.sha256),
-                        "held_lock_count": held_shas.len(),
-                        "held_shas": held_shas,
-                    })
-                };
-                self.ok_json(status)
-            }
-
-            "ghidra_cached_metadata" => {
-                let result =
-                    get_cached_metadata(&self.ghidra_projects, &self.s(&params, "binary_name"))
-                        .await
-                        .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_list_functions" => {
-                let result = list_functions(
-                    &self.ghidra_projects,
-                    &self.s(&params, "binary_name"),
-                    self.opt_s(&params, "query"),
-                    self.opt_u64(&params, "offset"),
-                    self.opt_u64(&params, "limit"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_decompile" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = DecompileContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = decompile_function(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                    self.opt_s(&params, "style"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_decompile_meta" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = DecompileMetaContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = get_decompile_meta(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                    self.opt_s(&params, "style"),
-                    self.opt_u64(&params, "token_limit").unwrap_or(200) as u32,
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_imports" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = ImportsExportsContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = list_imports(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    self.opt_s(&params, "query"),
-                    self.opt_u64(&params, "offset"),
-                    self.opt_u64(&params, "limit"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_exports" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = ImportsExportsContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = list_exports(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    self.opt_s(&params, "query"),
-                    self.opt_u64(&params, "offset"),
-                    self.opt_u64(&params, "limit"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_search_strings" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = SearchStringsContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = search_strings(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    self.opt_s(&params, "query"),
-                    self.opt_u64(&params, "offset"),
-                    self.opt_u64(&params, "limit"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_symbols" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = SymbolsContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = search_symbols(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "query"),
-                    self.opt_u64(&params, "offset"),
-                    self.opt_u64(&params, "limit"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_namespaces" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = NamespacesContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = list_namespaces(&ctx, &self.s(&params, "binary_name"))
-                    .await
-                    .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_data_types" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = DataTypesContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = get_data_types(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    self.opt_s(&params, "query").unwrap_or(""),
-                    self.opt_u64(&params, "offset"),
-                    self.opt_u64(&params, "limit"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_defined_data" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = DefinedDataContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = list_defined_data(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    self.opt_s(&params, "query"),
-                    self.opt_u64(&params, "offset"),
-                    self.opt_u64(&params, "limit"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_memory_map" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = MemoryMapContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = get_memory_map(&ctx, &self.s(&params, "binary_name"))
-                    .await
-                    .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_function_stats" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = FunctionStatsContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = get_function_stats(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_xrefs" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = XrefsContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = list_xrefs(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                    self.opt_s(&params, "direction"),
-                    self.opt_u64(&params, "offset"),
-                    self.opt_u64(&params, "limit"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_callgraph" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = CallGraphContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = gen_callgraph(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                    self.opt_s(&params, "direction"),
-                    self.opt_u64(&params, "depth"),
-                    self.opt_u64(&params, "max_nodes"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_cfg" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = CfgContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = gen_cfg(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_decompiler_cfg" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = DecompilerCfgContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = gen_decompiler_cfg(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                    self.opt_s(&params, "style"),
-                    self.opt_bool(&params, "include_ops").unwrap_or(false),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_decompiler_calls" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = DecompilerCallsContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let filter = DecompilerCallsFilter {
-                    only_external: self.opt_bool(&params, "only_external").unwrap_or(true),
-                    only_indirect: self.opt_bool(&params, "only_indirect").unwrap_or(false),
-                    only_api_tag: self.opt_s(&params, "only_api_tag").map(String::from),
-                };
-                let result = get_decompiler_calls(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                    self.opt_s(&params, "style"),
-                    &filter,
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_decompiler_memory" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = DecompilerMemoryContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = get_decompiler_memory(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                    self.opt_s(&params, "style"),
-                    &DecompilerMemoryFilter {
-                        only_writes: self.opt_bool(&params, "only_writes").unwrap_or(false),
-                    },
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_decompiler_block_behavior" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = DecompilerBlockBehaviorContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = get_decompiler_block_behavior(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                    self.opt_s(&params, "style"),
-                    &DecompilerBlockBehaviorFilter {
-                        only_strings: self.opt_bool(&params, "only_strings").unwrap_or(false),
-                        only_api_tag: self.opt_s(&params, "only_api_tag").map(String::from),
-                        only_external: self.opt_bool(&params, "only_external").unwrap_or(false),
-                    },
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_decompiler_slice" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = DecompilerSliceContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = get_decompiler_slice(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                    &self.s(&params, "seed_address"),
-                    self.opt_s(&params, "direction"),
-                    self.opt_s(&params, "style"),
-                    self.opt_u64(&params, "max_ops").unwrap_or(80) as u32,
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_variables" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = VariablesContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = get_variables(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_pcode" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = PcodeContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = get_pcode(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                    self.opt_s(&params, "style"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_search_bytes" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = SearchBytesContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = search_bytes(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "hex_pattern"),
-                    self.opt_u64(&params, "max_hits"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_behaviors" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = BehaviorsContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = scan_behaviors(&ctx, &self.s(&params, "binary_name"))
-                    .await
-                    .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_anti_analysis" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = AntiAnalysisContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = scan_anti_analysis(&ctx, &self.s(&params, "binary_name"))
-                    .await
-                    .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_function_checkpoints" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = FunctionCheckpointsContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = get_function_checkpoints(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                    self.opt_s(&params, "ranges"),
-                    self.opt_s(&params, "style"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_function_slices" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = FunctionSlicesContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = get_function_slices(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                    FunctionSlicesOptions {
-                        mode: self.opt_s(&params, "mode").unwrap_or(""),
-                        query: self.opt_s(&params, "query").unwrap_or(""),
-                        range_start: self.opt_s(&params, "range_start").unwrap_or(""),
-                        range_end: self.opt_s(&params, "range_end").unwrap_or(""),
-                        limit: self.opt_u64(&params, "limit").unwrap_or(50) as u32,
-                    },
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_path_digest" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = PathDigestContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = get_path_digest(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                    PathDigestOptions {
-                        range_start: self.opt_s(&params, "range_start").unwrap_or(""),
-                        range_end: self.opt_s(&params, "range_end").unwrap_or(""),
-                        stop_addresses: self.opt_s(&params, "stop_addresses").unwrap_or(""),
-                        state_register: self.opt_s(&params, "state_register").unwrap_or(""),
-                        max_instructions: self.opt_u64(&params, "max_instructions").unwrap_or(800)
-                            as u32,
-                        max_events: self.opt_u64(&params, "max_events").unwrap_or(200) as u32,
-                    },
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_context_api_slots" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                if self.opt_s(&params, "target_function").is_none()
-                    || self.opt_s(&params, "init_function").is_none()
-                {
-                    return Err(err(
-                        "ghidra_context_api_slots requires both target_function and init_function. Use ghidra_list_functions first to choose resolvable function names or addresses.",
-                    ));
-                }
-                let ctx = ContextApiSlotsContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = get_context_api_slots(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    rbm_ghidra::ContextApiSlotsOptions {
-                        target_function: self.opt_s(&params, "target_function").unwrap_or(""),
-                        init_function: self.opt_s(&params, "init_function").unwrap_or(""),
-                        export_resolver: self.opt_s(&params, "export_resolver").unwrap_or(""),
-                        module_resolver: self.opt_s(&params, "module_resolver").unwrap_or(""),
-                        context_stack_offset: self
-                            .opt_s(&params, "context_stack_offset")
-                            .unwrap_or(""),
-                        limit: self.opt_u64(&params, "limit").unwrap_or(200) as u32,
-                    },
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_thunk_target" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = ThunkTargetContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = get_thunk_target(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "function_address"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_disassemble" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = DisassembleContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = disassemble_function(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "target_address"),
-                    self.opt_u64(&params, "max_instructions").unwrap_or(32) as u32,
-                    self.opt_bool(&params, "include_analysis").unwrap_or(false),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_equates" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = EquatesContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = get_equates(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    self.opt_s(&params, "query").unwrap_or(""),
-                    self.opt_u64(&params, "offset"),
-                    self.opt_u64(&params, "limit"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_dynamic_dispatch_table" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                if self.opt_s(&params, "table_count_global").is_none()
-                    && self.opt_s(&params, "table_ptr_global").is_none()
-                    && self.opt_s(&params, "builder_start").is_none()
-                    && self.opt_s(&params, "hash_function").is_none()
-                    && self.opt_s(&params, "call_gate_global").is_none()
-                {
-                    return Err(err(
-                        "ghidra_dynamic_dispatch_table requires at least one anchor: table_count_global, table_ptr_global, builder_start, hash_function, or call_gate_global. Use ghidra_symbols, ghidra_defined_data, and ghidra_list_functions first to identify candidate anchors.",
-                    ));
-                }
-                let ctx = DynamicDispatchTableContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = recover_dynamic_dispatch_table(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    DynamicDispatchTableOptions {
-                        table_count_global: self.opt_s(&params, "table_count_global").unwrap_or(""),
-                        table_ptr_global: self.opt_s(&params, "table_ptr_global").unwrap_or(""),
-                        builder_start: self.opt_s(&params, "builder_start").unwrap_or(""),
-                        builder_end: self.opt_s(&params, "builder_end").unwrap_or(""),
-                        hash_function: self.opt_s(&params, "hash_function").unwrap_or(""),
-                        call_gate_global: self.opt_s(&params, "call_gate_global").unwrap_or(""),
-                        lookup_hashes: self.opt_s(&params, "lookup_hashes").unwrap_or(""),
-                        adapter_function: self.opt_s(&params, "adapter_function").unwrap_or(""),
-                        hash_seed: self.opt_s(&params, "hash_seed").unwrap_or(""),
-                        hash_multiplier: self.opt_s(&params, "hash_multiplier").unwrap_or(""),
-                        candidate_names: self.opt_s(&params, "candidate_names").unwrap_or(""),
-                        max_instructions: self.opt_u64(&params, "max_instructions").unwrap_or(15000)
-                            as u32,
-                        limit: self.opt_u64(&params, "limit").unwrap_or(100) as u32,
-                    },
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            "ghidra_read_bytes" => {
-                let rt = self.ghidra_runtime().map_err(|e| err(e))?;
-                let ctx = ReadBytesContext {
-                    manager: self.ghidra_projects.clone(),
-                    analyze_headless: rt.analyze_headless,
-                    scripts_dir: rt.scripts_dir,
-                    timeout: self.config.ghidra_call_timeout,
-                };
-                let result = read_bytes(
-                    &ctx,
-                    &self.s(&params, "binary_name"),
-                    &self.s(&params, "address"),
-                    self.opt_u64(&params, "size"),
-                )
-                .await
-                .map_err(|e| err(e.to_string()))?;
-                self.ok_json(result)
-            }
-
-            _ => Err(rmcp::model::ErrorData::new(
-                rmcp::model::ErrorCode::INVALID_PARAMS,
-                format!("unknown tool: {name}"),
-                None,
-            )),
-        }
     }
 }
