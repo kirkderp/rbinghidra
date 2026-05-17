@@ -308,6 +308,8 @@ pub fn safe_ghidra_dir_for_headless(requested: &Path) -> PathBuf {
     if !has_hidden_component(requested) {
         return requested.to_path_buf();
     }
+    // Newer Ghidra headless imports reject project directories under hidden
+    // path components such as ".cache", so keep the project root visible.
     let base = non_hidden_parent(requested).join("rbinghidra-ghidra");
     let digest = short_path_digest(requested);
     base.join(digest).join("ghidra")

@@ -244,9 +244,12 @@ fn safe_ghidra_dir_keeps_non_hidden_cache_paths() {
 
 #[test]
 fn safe_ghidra_dir_moves_hidden_cache_paths_to_non_hidden_base() {
-    let requested = PathBuf::from("/Users/macmini/.cache/rbinghidra/ghidra");
+    let requested = PathBuf::from("visible")
+        .join(".cache")
+        .join("rbinghidra")
+        .join("ghidra");
     let safe = safe_ghidra_dir_for_headless(&requested);
-    assert!(safe.starts_with("/Users/macmini/rbinghidra-ghidra"));
+    assert!(safe.starts_with(PathBuf::from("visible").join("rbinghidra-ghidra")));
     assert!(safe.ends_with("ghidra"));
     assert!(
         !safe.components().any(|component| {
