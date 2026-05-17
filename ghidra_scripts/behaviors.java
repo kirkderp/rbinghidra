@@ -180,6 +180,15 @@ public class behaviors extends GhidraScript {
             || suffix.equals("2w");
     }
 
+    private static boolean containsApiMatch(List<String> apis, String wantedApi) {
+        for (String api : apis) {
+            if (apiMatches(api, wantedApi)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     public void run() throws Exception {
         String[] args = getScriptArgs();
@@ -298,6 +307,11 @@ public class behaviors extends GhidraScript {
                 }
                 int matchCount = matchedApis.size();
                 if ("ransomware_pattern".equals(pattern.id) && !matchedApis.contains("CryptEncrypt")) {
+                    continue;
+                }
+                if ("defense_evasion".equals(pattern.id)
+                    && !containsApiMatch(matchedApis, "VirtualProtect")
+                    && !containsApiMatch(matchedApis, "NtSetInformationThread")) {
                     continue;
                 }
                 int threshold = (int) Math.ceil(pattern.apis.length / 2.0);

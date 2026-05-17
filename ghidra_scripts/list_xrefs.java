@@ -90,6 +90,7 @@ public class list_xrefs extends GhidraScript {
         } else {
             String nameLc = nameOrAddress.toLowerCase();
             List<Symbol> exactMatches = new ArrayList<>();
+            List<Symbol> simpleExactMatches = new ArrayList<>();
             List<Symbol> partialMatches = new ArrayList<>();
             SymbolIterator it = table.getAllSymbols(true);
             while (it.hasNext()) {
@@ -109,12 +110,20 @@ public class list_xrefs extends GhidraScript {
                 String qLc = qualified.toLowerCase();
                 if (nameLc.equals(qLc)) {
                     exactMatches.add(sym);
+                    continue;
+                }
+                String simple = sym.getName();
+                if (simple != null && nameLc.equals(simple.toLowerCase())) {
+                    simpleExactMatches.add(sym);
                 } else if (qLc.contains(nameLc)) {
                     partialMatches.add(sym);
                 }
             }
 
-            List<Symbol> picked = !exactMatches.isEmpty() ? exactMatches : partialMatches;
+            List<Symbol> picked = !exactMatches.isEmpty()
+                ? exactMatches
+                : (!simpleExactMatches.isEmpty() ? simpleExactMatches : partialMatches);
+            picked = preferSingleExternalSymbol(picked);
             if (picked.isEmpty()) {
                 resolutionError = "Symbol '" + nameOrAddress + "' not found.";
             } else if (picked.size() > 1) {
@@ -206,6 +215,22 @@ public class list_xrefs extends GhidraScript {
                 + "' (resolved to " + (targetAddress != null ? targetAddress.toString() : "?")
                 + "), returning " + page.size() + " (offset=" + offset + ", limit=" + limit + ") to " + outputPath);
         }
+    }
+
+    private List<Symbol> preferSingleExternalSymbol(List<Symbol> symbols) {
+        if (symbols.size() <= 1) {
+            return symbols;
+        }
+        List<Symbol> external = new ArrayList<>();
+        for (Symbol sym : symbols) {
+            try {
+                if (sym.isExternal()) {
+                    external.add(sym);
+                }
+            } catch (Exception e) {
+            }
+        }
+        return external.size() == 1 ? external : symbols;
     }
 
     private Iterable<Reference> referencesFor(
