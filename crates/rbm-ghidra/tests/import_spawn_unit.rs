@@ -85,7 +85,7 @@ fn import_binary_spawns_runner_and_writes_output_via_fake_analyze_headless() {
         let ctx = make_ctx(&tmp, mgr.clone(), analyze, Duration::from_secs(10));
 
         let report = import_binary(&ctx, &bin).await.unwrap();
-        assert_eq!(report.status, "analyzing");
+        assert_eq!(report.status, "running");
         assert!(report.started, "first call should kick off the runner");
 
         let output = mgr.output_path(&sha256_hex);
@@ -152,7 +152,7 @@ fn import_binary_retries_when_stale_output_is_not_valid_extract_envelope() {
         let ctx = make_ctx(&tmp, mgr.clone(), analyze, Duration::from_secs(10));
 
         let report = import_binary(&ctx, &bin).await.unwrap();
-        assert_eq!(report.status, "analyzing");
+        assert_eq!(report.status, "running");
         assert!(
             report.started,
             "stale output should not be treated as ready"
@@ -182,7 +182,7 @@ fn import_binary_failing_runner_does_not_write_output_or_panic() {
         let ctx = make_ctx(&tmp, mgr.clone(), analyze, Duration::from_secs(10));
 
         let report = import_binary(&ctx, &bin).await.unwrap();
-        assert_eq!(report.status, "analyzing");
+        assert_eq!(report.status, "running");
         assert!(report.started);
 
         let error_path = mgr.project_dir(&sha256_hex).join(IMPORT_ERROR_FILE);
@@ -216,7 +216,7 @@ fn import_binary_success_without_output_surfaces_headless_import_reason() {
         let ctx = make_ctx(&tmp, mgr.clone(), analyze, Duration::from_secs(10));
 
         let report = import_binary(&ctx, &bin).await.unwrap();
-        assert_eq!(report.status, "analyzing");
+        assert_eq!(report.status, "running");
         assert!(report.started);
 
         let error_path = mgr.project_dir(&sha256_hex).join(IMPORT_ERROR_FILE);
@@ -250,12 +250,12 @@ fn import_binary_slow_runner_holds_lock_until_complete() {
         let ctx = make_ctx(&tmp, mgr.clone(), analyze, Duration::from_secs(60));
 
         let first = import_binary(&ctx, &bin).await.unwrap();
-        assert_eq!(first.status, "analyzing");
+        assert_eq!(first.status, "running");
         assert!(first.started);
 
-        // Second call should observe the held lock and return analyzing+started=false.
+        // Second call should observe the held lock and return running+started=false.
         let second = import_binary(&ctx, &bin).await.unwrap();
-        assert_eq!(second.status, "analyzing");
+        assert_eq!(second.status, "running");
         assert!(
             !second.started,
             "second call must not spawn a duplicate task"

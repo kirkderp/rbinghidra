@@ -54,7 +54,7 @@ async fn ghidra_import_runs_extract_functions_against_real_binary() {
     };
 
     let report = import_binary(&ctx, &binary).await.unwrap();
-    assert_eq!(report.status, "analyzing");
+    assert_eq!(report.status, "running");
     assert!(report.started, "first call should start the runner");
     assert_eq!(report.cache_key, format!("sha256:{sha}"));
 
