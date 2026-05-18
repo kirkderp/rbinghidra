@@ -6,25 +6,26 @@ use rbm_core::ServerConfig;
 use rbm_ghidra::inspect::parse_sha256_lookup;
 use rbm_ghidra::{
     AntiAnalysisContext, BehaviorsContext, CallGraphContext, CfgContext, ConstantsContext,
-    ContextApiSlotsContext, DataTypesContext, DecompileContext, DecompileMetaContext,
-    DecompilerBlockBehaviorContext, DecompilerBlockBehaviorFilter, DecompilerCallsContext,
-    DecompilerCallsFilter, DecompilerCfgContext, DecompilerMemoryContext, DecompilerMemoryFilter,
-    DecompilerSliceContext, DefinedDataContext, DisassembleContext, DynamicDispatchTableContext,
-    DynamicDispatchTableOptions, EquatesContext, FunctionCheckpointsContext, FunctionSlicesContext,
-    FunctionSlicesOptions, FunctionStatsContext, GoMetadataContext, ImportContext, ImportOptions,
-    ImportsExportsContext, MemoryMapContext, NamespacesContext, PathDigestContext,
-    PathDigestOptions, PcodeContext, ProjectManager, ReadBytesContext, SearchBytesContext,
-    SearchDecompilationContext, SearchStringsContext, StringContextContext, SymbolsContext,
-    ThunkTargetContext, VariablesContext, XrefsContext, decompile_function, delete_cached_binary,
-    disassemble_function, gen_callgraph, gen_cfg, gen_decompiler_cfg, get_cached_metadata,
-    get_context_api_slots, get_data_types, get_decompile_meta, get_decompiler_block_behavior,
-    get_decompiler_calls, get_decompiler_memory, get_decompiler_slice, get_equates,
-    get_function_checkpoints, get_function_slices, get_function_stats, get_go_metadata,
-    get_memory_map, get_path_digest, get_pcode, get_string_context, get_thunk_target,
-    get_variables, import_binary_with_options, list_cached_binaries, list_defined_data,
-    list_exports, list_functions, list_imports, list_namespaces, list_xrefs, probe_at, read_bytes,
-    recover_dynamic_dispatch_table, scan_anti_analysis, scan_behaviors, scan_constants,
-    search_bytes, search_decompilation, search_strings, search_symbols,
+    ConstantsOptions, ContextApiSlotsContext, DataTypesContext, DecompileContext,
+    DecompileMetaContext, DecompilerBlockBehaviorContext, DecompilerBlockBehaviorFilter,
+    DecompilerCallsContext, DecompilerCallsFilter, DecompilerCfgContext, DecompilerMemoryContext,
+    DecompilerMemoryFilter, DecompilerSliceContext, DefinedDataContext, DisassembleContext,
+    DynamicDispatchTableContext, DynamicDispatchTableOptions, EquatesContext,
+    FunctionCheckpointsContext, FunctionSlicesContext, FunctionSlicesOptions, FunctionStatsContext,
+    GoMetadataContext, ImportContext, ImportOptions, ImportsExportsContext, MemoryMapContext,
+    NamespacesContext, PathDigestContext, PathDigestOptions, PcodeContext, ProjectManager,
+    ReadBytesContext, SearchBytesContext, SearchDecompilationContext, SearchStringsContext,
+    StringContextContext, SymbolsContext, ThunkTargetContext, VariablesContext, XrefsContext,
+    decompile_function, delete_cached_binary, disassemble_function, gen_callgraph, gen_cfg,
+    gen_decompiler_cfg, get_cached_metadata, get_context_api_slots, get_data_types,
+    get_decompile_meta, get_decompiler_block_behavior, get_decompiler_calls, get_decompiler_memory,
+    get_decompiler_slice, get_equates, get_function_checkpoints, get_function_slices,
+    get_function_stats, get_go_metadata, get_memory_map, get_path_digest, get_pcode,
+    get_string_context, get_thunk_target, get_variables, import_binary_with_options,
+    list_cached_binaries, list_defined_data, list_exports, list_functions, list_imports,
+    list_namespaces, list_xrefs, probe_at, read_bytes, recover_dynamic_dispatch_table,
+    scan_anti_analysis, scan_behaviors, scan_constants, search_bytes, search_decompilation,
+    search_strings, search_symbols,
 };
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
@@ -1142,13 +1143,16 @@ impl ServerHandler for RbmServer {
                 let result = scan_constants(
                     &ctx,
                     &self.s(&params, "binary_name"),
-                    self.opt_s(&params, "mode"),
-                    self.opt_s(&params, "value"),
-                    self.opt_s(&params, "min_value"),
-                    self.opt_s(&params, "max_value"),
-                    self.opt_bool(&params, "include_small_values")
-                        .unwrap_or(false),
-                    self.opt_u64(&params, "limit"),
+                    ConstantsOptions {
+                        mode: self.opt_s(&params, "mode"),
+                        value: self.opt_s(&params, "value"),
+                        min_value: self.opt_s(&params, "min_value"),
+                        max_value: self.opt_s(&params, "max_value"),
+                        include_small_values: self
+                            .opt_bool(&params, "include_small_values")
+                            .unwrap_or(false),
+                        limit: self.opt_u64(&params, "limit"),
+                    },
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;

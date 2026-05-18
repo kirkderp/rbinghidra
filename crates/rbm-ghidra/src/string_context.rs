@@ -127,6 +127,13 @@ struct StringContextEnvelope {
     strings: Vec<StringContextEntry>,
 }
 
+/// Search strings and return xrefs plus decompiler snippets from referrer functions.
+///
+/// # Errors
+///
+/// Returns an error if the query is empty, the binary cannot be resolved, the
+/// Ghidra script cannot run, or the string-context report cannot be read or
+/// decoded.
 pub async fn get_string_context(
     ctx: &StringContextContext,
     binary_query: &str,

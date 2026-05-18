@@ -142,6 +142,13 @@ pub fn resolve_max_functions(max_functions: Option<u64>) -> u64 {
         .min(MAX_MAX_FUNCTIONS)
 }
 
+/// Search decompiled pseudocode in a cached Ghidra project.
+///
+/// # Errors
+///
+/// Returns an error if the query is empty, the binary cannot be resolved, the
+/// Ghidra script cannot run, or the decompilation search report cannot be read
+/// or decoded.
 pub async fn search_decompilation(
     ctx: &SearchDecompilationContext,
     binary_query: &str,

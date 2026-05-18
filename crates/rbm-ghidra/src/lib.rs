@@ -88,7 +88,7 @@ pub use callgraph::{
 pub use cfg::{CFG_SCHEMA, CfgBlock, CfgContext, CfgEdge, CfgError, CfgResult, gen_cfg};
 pub use constants::{
     CONSTANTS_SCHEMA, ConstantEntry, ConstantLocation, ConstantsContext, ConstantsError,
-    ConstantsResult, scan_constants,
+    ConstantsOptions, ConstantsResult, scan_constants,
 };
 pub use context_api_slots::{
     CONTEXT_API_SLOTS_SCHEMA, ContextApiSlotsContext, ContextApiSlotsOptions, get_context_api_slots,

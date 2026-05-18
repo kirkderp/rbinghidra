@@ -101,6 +101,16 @@ pub struct ConstantsContext {
     pub timeout: Duration,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ConstantsOptions<'a> {
+    pub mode: Option<&'a str>,
+    pub value: Option<&'a str>,
+    pub min_value: Option<&'a str>,
+    pub max_value: Option<&'a str>,
+    pub include_small_values: bool,
+    pub limit: Option<u64>,
+}
+
 #[derive(Debug, Deserialize)]
 struct ConstantsEnvelope {
     #[serde(default)]
@@ -129,24 +139,25 @@ struct ConstantsEnvelope {
     constants: Vec<ConstantEntry>,
 }
 
+/// Scan instruction immediates in a cached Ghidra project.
+///
+/// # Errors
+///
+/// Returns an error if the mode is invalid, the binary cannot be resolved, the
+/// Ghidra script cannot run, or the constants report cannot be read or decoded.
 pub async fn scan_constants(
     ctx: &ConstantsContext,
     binary_query: &str,
-    mode: Option<&str>,
-    value: Option<&str>,
-    min_value: Option<&str>,
-    max_value: Option<&str>,
-    include_small_values: bool,
-    limit: Option<u64>,
+    options: ConstantsOptions<'_>,
 ) -> Result<ConstantsResult, ConstantsError> {
-    let resolved_mode = mode.unwrap_or("common").trim().to_ascii_lowercase();
+    let resolved_mode = options.mode.unwrap_or("common").trim().to_ascii_lowercase();
     if !matches!(resolved_mode.as_str(), "uses" | "range" | "common") {
         return Err(ConstantsError::InvalidMode(resolved_mode));
     }
-    let resolved_limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
-    let value = value.unwrap_or("").trim();
-    let min_value = min_value.unwrap_or("").trim();
-    let max_value = max_value.unwrap_or("").trim();
+    let resolved_limit = options.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
+    let value = options.value.unwrap_or("").trim();
+    let min_value = options.min_value.unwrap_or("").trim();
+    let max_value = options.max_value.unwrap_or("").trim();
 
     let WarmPathProduct {
         sha256,
@@ -167,7 +178,7 @@ pub async fn scan_constants(
             value.to_string(),
             min_value.to_string(),
             max_value.to_string(),
-            include_small_values.to_string(),
+            options.include_small_values.to_string(),
             resolved_limit.to_string(),
         ],
     })

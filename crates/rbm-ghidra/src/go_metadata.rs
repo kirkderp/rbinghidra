@@ -120,6 +120,12 @@ struct GoMetadataEnvelope {
     error_count: u64,
 }
 
+/// Extract heuristic Go build, package, and runtime indicators from a cached Ghidra project.
+///
+/// # Errors
+///
+/// Returns an error if the binary cannot be resolved, the Ghidra script cannot
+/// run, or the Go metadata report cannot be read or decoded.
 pub async fn get_go_metadata(
     ctx: &GoMetadataContext,
     binary_query: &str,
