@@ -754,7 +754,7 @@ impl RbmServer {
             t(
                 "ghidra_delete",
                 "Delete cached Ghidra project data for a binary",
-                schema_any_of(
+                schema(
                     vec![
                         (
                             "binary_name",
@@ -766,7 +766,6 @@ impl RbmServer {
                         ),
                     ],
                     vec![],
-                    vec![vec!["binary_name"], vec!["cache_key"]],
                 ),
             ),
             t(
@@ -1964,9 +1963,9 @@ mod tests {
             "explicit sha256: cache key or raw SHA-256"
         );
         assert_eq!(schema["required"], serde_json::json!([]));
-        assert_eq!(
-            schema["anyOf"],
-            serde_json::json!([{"required": ["binary_name"]}, {"required": ["cache_key"]}])
+        assert!(
+            schema.get("anyOf").is_none(),
+            "OpenAI tool schemas reject top-level anyOf; ghidra_delete validates either field at runtime"
         );
     }
 
