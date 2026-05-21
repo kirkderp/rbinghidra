@@ -329,7 +329,10 @@ fn is_valid_ghidra_dir_accepts_synthetic_layout() {
     assert!(is_valid_ghidra_dir(root));
 }
 
+use serial_test::serial;
+
 #[test]
+#[serial]
 fn discover_install_dir_respects_env_override() {
     // Set env var to a nonexistent dir -> should return None (since it's not valid)
     // First, test with a valid synthetic dir
@@ -364,6 +367,7 @@ fn discover_install_dir_respects_env_override() {
 }
 
 #[test]
+#[serial]
 fn discover_install_dir_env_override_ignores_invalid() {
     // Set env var to a dir that doesn't look like Ghidra -> should fall through to known paths
     let tmp = TempDir::new().unwrap();
