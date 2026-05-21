@@ -33,6 +33,9 @@ public class function_slices extends GhidraScript {
     private static final int CONTEXT_BEFORE = 18;
     private static final int CONTEXT_AFTER = 12;
     private static final Pattern IMM = Pattern.compile("(?i)\\b0x([0-9a-f]{1,16})\\b|\\b(\\d{1,20})\\b");
+    private static final Pattern REG_PATTERN = Pattern.compile("(?i)(e?[abcd]x|e?[sd]i|e?[sb]p|r[0-9]+[dwb]?|r[abcd]x|r[sd]i|r[sb]p|[abcd][lh])");
+    private static final Pattern MEM_OP_PATTERN = Pattern.compile("(?i)^(.+?)([+-])(0x[0-9a-f]+|\\d+)$");
+    private static final Pattern STACK_ARG_PATTERN = Pattern.compile("\\+0x([0-9a-f]+)|\\+(\\d+)");
 
     @Override
     public void run() throws Exception {
@@ -853,7 +856,7 @@ public class function_slices extends GhidraScript {
     }
 
     private boolean isRegister(String s) {
-        return s.matches("(?i)(e?[abcd]x|e?[sd]i|e?[sb]p|r[0-9]+[dwb]?|r[abcd]x|r[sd]i|r[sb]p|[abcd][lh])");
+        return REG_PATTERN.matcher(s).matches();
     }
 
     private MemoryOperand memoryOperand(String operand) {
@@ -867,7 +870,7 @@ public class function_slices extends GhidraScript {
             }
             int offset = 0;
             String base = inner;
-            Matcher m = Pattern.compile("(?i)^(.+?)([+-])(0x[0-9a-f]+|\\d+)$").matcher(inner);
+            Matcher m = MEM_OP_PATTERN.matcher(inner);
             if (m.matches()) {
                 base = m.group(1);
                 Long parsed = parseLongLiteral(m.group(3));
@@ -948,7 +951,7 @@ public class function_slices extends GhidraScript {
     }
 
     private int stackArgIndex(String dst) {
-        Matcher m = Pattern.compile("\\+0x([0-9a-f]+)|\\+(\\d+)").matcher(dst);
+        Matcher m = STACK_ARG_PATTERN.matcher(dst);
         long offset = 0;
         if (m.find()) {
             Long parsed = parseLongLiteral(m.group(1) != null ? "0x" + m.group(1) : m.group(2));

@@ -44,6 +44,10 @@ pub const FUNCTION_SLICES_SCRIPT: &str = "function_slices.java";
 pub const PATH_DIGEST_SCRIPT: &str = "path_digest.java";
 pub const DYNAMIC_DISPATCH_TABLE_SCRIPT: &str = "dynamic_dispatch_table.java";
 pub const CONTEXT_API_SLOTS_SCRIPT: &str = "context_api_slots.java";
+pub const SEARCH_DECOMPILATION_SCRIPT: &str = "search_decompilation.java";
+pub const STRING_CONTEXT_SCRIPT: &str = "stringcontext.java";
+pub const CONSTANTS_SCRIPT: &str = "constants.java";
+pub const GO_METADATA_SCRIPT: &str = "go_metadata.java";
 
 #[derive(Debug, Error)]
 pub enum ProjectError {

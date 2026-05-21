@@ -36,6 +36,7 @@ pub mod behaviors;
 pub mod bytes;
 pub mod callgraph;
 pub mod cfg;
+pub mod constants;
 pub mod context_api_slots;
 pub mod data_types;
 pub mod decompile;
@@ -53,6 +54,7 @@ pub mod equates;
 pub mod function_checkpoints;
 pub mod function_slices;
 pub mod function_stats;
+pub mod go_metadata;
 pub mod health;
 pub mod import;
 pub mod imports_exports;
@@ -64,9 +66,12 @@ pub mod path_digest;
 pub mod pcode;
 pub mod project;
 pub mod search_bytes;
+pub mod search_decompilation;
+pub mod string_context;
 pub mod strings;
 pub mod symbols;
 pub mod thunk_target;
+pub mod utils;
 pub mod variables;
 pub mod warm_path;
 pub mod xrefs;
@@ -82,6 +87,10 @@ pub use callgraph::{
     CallGraphResult, gen_callgraph,
 };
 pub use cfg::{CFG_SCHEMA, CfgBlock, CfgContext, CfgEdge, CfgError, CfgResult, gen_cfg};
+pub use constants::{
+    CONSTANTS_SCHEMA, ConstantEntry, ConstantLocation, ConstantsContext, ConstantsError,
+    ConstantsOptions, ConstantsResult, scan_constants,
+};
 pub use context_api_slots::{
     CONTEXT_API_SLOTS_SCHEMA, ContextApiSlotsContext, ContextApiSlotsOptions, get_context_api_slots,
 };
@@ -147,6 +156,10 @@ pub use function_slices::{
 pub use function_stats::{
     FunctionStatsContext, FunctionStatsError, FunctionStatsResult, get_function_stats,
 };
+pub use go_metadata::{
+    GO_METADATA_SCHEMA, GoFunctionHit, GoMetadataContext, GoMetadataError, GoMetadataResult,
+    GoStringHit, get_go_metadata,
+};
 pub use health::{
     GhidraCapabilities, GhidraHealth, discover_install_dir, is_valid_ghidra_dir, probe, probe_at,
 };
@@ -176,22 +189,31 @@ pub use pcode::{
     PCODE_SCHEMA, PcodeContext, PcodeError, PcodeOp, PcodeResult, PcodeVarnode, get_pcode,
 };
 pub use project::{
-    ANTI_ANALYSIS_SCRIPT, BEHAVIORS_SCRIPT, CALLGRAPH_SCRIPT, CFG_SCRIPT, CONTEXT_API_SLOTS_SCRIPT,
-    DATA_TYPES_SCRIPT, DECOMPILE_FUNCTION_SCRIPT, DECOMPILE_META_SCRIPT,
+    ANTI_ANALYSIS_SCRIPT, BEHAVIORS_SCRIPT, CALLGRAPH_SCRIPT, CFG_SCRIPT, CONSTANTS_SCRIPT,
+    CONTEXT_API_SLOTS_SCRIPT, DATA_TYPES_SCRIPT, DECOMPILE_FUNCTION_SCRIPT, DECOMPILE_META_SCRIPT,
     DECOMPILER_BLOCK_BEHAVIOR_SCRIPT, DECOMPILER_CALLS_SCRIPT, DECOMPILER_CFG_SCRIPT,
     DECOMPILER_MEMORY_SCRIPT, DECOMPILER_SLICE_SCRIPT, DEFINED_DATA_SCRIPT, DISASSEMBLE_SCRIPT,
     DYNAMIC_DISPATCH_TABLE_SCRIPT, EQUATES_SCRIPT, EXTRACT_FUNCTIONS_SCRIPT,
-    FUNCTION_CHECKPOINTS_SCRIPT, FUNCTION_SLICES_SCRIPT, FUNCTIONS_OUTPUT_FILE, HeadlessError,
-    HeadlessOutcome, HeadlessRunner, ImportSpec, LIST_EXPORTS_SCRIPT, LIST_IMPORTS_SCRIPT,
-    LIST_XREFS_SCRIPT, MEMORY_MAP_SCRIPT, PATH_DIGEST_SCRIPT, PCODE_SCRIPT, PathValidationError,
-    ProcessSpec, ProjectError, ProjectManager, READ_BYTES_SCRIPT, SEARCH_BYTES_SCRIPT,
-    SEARCH_STRINGS_SCRIPT, SEARCH_SYMBOLS_SCRIPT, THUNK_TARGET_SCRIPT, VARIABLES_SCRIPT,
-    build_import_argv, build_process_argv, cache_key, hash_file, project_name_for,
-    sanitize_project_name, stage_script_for_headless, validate_ghidra_environment,
+    FUNCTION_CHECKPOINTS_SCRIPT, FUNCTION_SLICES_SCRIPT, FUNCTIONS_OUTPUT_FILE, GO_METADATA_SCRIPT,
+    HeadlessError, HeadlessOutcome, HeadlessRunner, ImportSpec, LIST_EXPORTS_SCRIPT,
+    LIST_IMPORTS_SCRIPT, LIST_XREFS_SCRIPT, MEMORY_MAP_SCRIPT, PATH_DIGEST_SCRIPT, PCODE_SCRIPT,
+    PathValidationError, ProcessSpec, ProjectError, ProjectManager, READ_BYTES_SCRIPT,
+    SEARCH_BYTES_SCRIPT, SEARCH_DECOMPILATION_SCRIPT, SEARCH_STRINGS_SCRIPT, SEARCH_SYMBOLS_SCRIPT,
+    STRING_CONTEXT_SCRIPT, THUNK_TARGET_SCRIPT, VARIABLES_SCRIPT, build_import_argv,
+    build_process_argv, cache_key, hash_file, project_name_for, sanitize_project_name,
+    stage_script_for_headless, validate_ghidra_environment,
 };
 pub use search_bytes::{
     DEFAULT_MAX_HITS, MAX_HITS_CAP, SEARCH_BYTES_SCHEMA, SearchBytesContext, SearchBytesError,
     SearchBytesResult, resolve_max_hits, search_bytes,
+};
+pub use search_decompilation::{
+    DecompilationSearchHit, SEARCH_DECOMPILATION_SCHEMA, SearchDecompilationContext,
+    SearchDecompilationError, SearchDecompilationResult, search_decompilation,
+};
+pub use string_context::{
+    STRING_CONTEXT_SCHEMA, StringContextContext, StringContextEntry, StringContextError,
+    StringContextResult, StringContextXref, get_string_context,
 };
 pub use strings::{
     SearchStringsContext, SearchStringsError, SearchStringsResult, StringEntry, search_strings,

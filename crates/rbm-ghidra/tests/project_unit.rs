@@ -318,7 +318,7 @@ fn hash_file_rejects_directory_paths() {
 #[test]
 fn import_report_serializes_to_stable_shape() {
     let report = ImportReport {
-        status: "analyzing".to_string(),
+        status: "running".to_string(),
         cache_key: "sha256:abc".to_string(),
         binary_name: "sample.bin".to_string(),
         project_dir: "/tmp/proj".to_string(),
@@ -329,7 +329,7 @@ fn import_report_serializes_to_stable_shape() {
         error: None,
     };
     let json: serde_json::Value = serde_json::to_value(&report).unwrap();
-    assert_eq!(json["status"], "analyzing");
+    assert_eq!(json["status"], "running");
     assert_eq!(json["cache_key"], "sha256:abc");
     assert_eq!(json["binary_name"], "sample.bin");
     assert_eq!(json["project_dir"], "/tmp/proj");
@@ -367,7 +367,7 @@ fn import_binary_returns_ready_when_output_already_exists() {
 }
 
 #[test]
-fn import_binary_returns_analyzing_without_starting_when_lock_held() {
+fn import_binary_returns_running_without_starting_when_lock_held() {
     let rt = make_runtime();
     rt.block_on(async {
         let (tmp, mgr) = make_manager();
@@ -383,7 +383,7 @@ fn import_binary_returns_analyzing_without_starting_when_lock_held() {
             .expect("test must hold the lock first");
 
         let report = import_binary(&ctx, &bin).await.unwrap();
-        assert_eq!(report.status, "analyzing");
+        assert_eq!(report.status, "running");
         assert!(!report.started, "lock was held, no new task should start");
         assert_eq!(report.eta_ms, None);
         assert!(report.next_action.contains("already running"));

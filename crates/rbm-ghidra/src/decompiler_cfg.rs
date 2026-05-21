@@ -13,7 +13,6 @@ use crate::warm_path::{WarmPathProduct, WarmPathRequest, execute_warm_path};
 
 pub const DECOMPILER_CFG_SCHEMA: &str = "rbm.ghidra.decompiler_cfg.v0";
 const OUTPUT_PREFIX: &str = "decompiler_cfg";
-const DEFAULT_SIMPLIFICATION_STYLE: &str = "decompile";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DecompilerCfgOp {
@@ -361,11 +360,9 @@ pub async fn gen_decompiler_cfg(
     if name_or_address.trim().is_empty() {
         return Err(DecompilerCfgError::EmptyQuery);
     }
-    let simplification_style =
-        resolve_simplification_style(simplification_style).ok_or_else(|| {
-            DecompilerCfgError::InvalidSimplificationStyle {
-                style: simplification_style.unwrap_or_default().to_string(),
-            }
+    let simplification_style = crate::utils::resolve_simplification_style(simplification_style)
+        .ok_or_else(|| DecompilerCfgError::InvalidSimplificationStyle {
+            style: simplification_style.unwrap_or_default().to_string(),
         })?;
 
     let WarmPathProduct {
@@ -425,15 +422,4 @@ pub async fn gen_decompiler_cfg(
         resolution_error: String::new(),
         mermaid: envelope.mermaid,
     })
-}
-
-fn resolve_simplification_style(style: Option<&str>) -> Option<&'static str> {
-    match style.unwrap_or(DEFAULT_SIMPLIFICATION_STYLE).trim() {
-        "" | DEFAULT_SIMPLIFICATION_STYLE => Some(DEFAULT_SIMPLIFICATION_STYLE),
-        "normalize" => Some("normalize"),
-        "register" => Some("register"),
-        "firstpass" => Some("firstpass"),
-        "paramid" => Some("paramid"),
-        _ => None,
-    }
 }

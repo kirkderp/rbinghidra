@@ -6,7 +6,7 @@
 
 MCP server for Ghidra-based binary analysis.
 
-`rbinghidra` manages per-binary Ghidra projects, imports binaries, and runs 40 Ghidra-backed tools through `analyzeHeadless`. It operates as a [Model Context Protocol](https://modelcontextprotocol.io) server over stdio, exposing each query as a named tool.
+`rbinghidra` manages per-binary Ghidra projects, imports binaries, and runs 44 Ghidra-backed tools through `analyzeHeadless`. It operates as a [Model Context Protocol](https://modelcontextprotocol.io) server over stdio, exposing each query as a named tool.
 
 ## Tools
 
@@ -17,6 +17,7 @@ MCP server for Ghidra-based binary analysis.
 - `ghidra_list_functions`  -  function inventory with name filtering
 - `ghidra_imports` / `ghidra_exports` / `ghidra_symbols`  -  import/export/symbol tables
 - `ghidra_namespaces` / `ghidra_data_types` / `ghidra_search_strings` / `ghidra_memory_map` / `ghidra_defined_data`
+- `ghidra_string_context`  -  string search with xrefs and decompiler snippets from referrer functions
 - `ghidra_function_stats`  -  cyclomatic complexity, instruction count, basic-block count, call count
 - `ghidra_equates`  -  named constants
 
@@ -32,11 +33,14 @@ MCP server for Ghidra-based binary analysis.
 - `ghidra_path_digest`  -  compact block/event digest for a function path
 - `ghidra_variables`  -  function parameter and local listings
 - `ghidra_pcode`  -  P-code extraction
+- `ghidra_search_decompilation`  -  bounded regex search across decompiled pseudocode
 
 **Analysis**
 - `ghidra_behaviors`  -  behavioral threat pattern scanning with API and string evidence
 - `ghidra_anti_analysis`  -  anti-debug, anti-VM, timing check, PEB access detection
 - `ghidra_function_checkpoints`  -  deferred P-code checkpoints with stack delta analysis
+- `ghidra_constants`  -  common, exact, or range-based instruction immediate scanning
+- `ghidra_go_metadata`  -  heuristic Go build/version/module/package indicators
 
 **Navigation & CFG**
 - `ghidra_callgraph`  -  callgraph traversal with configurable depth and node limits

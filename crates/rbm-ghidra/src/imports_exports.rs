@@ -293,3 +293,36 @@ pub async fn list_imports(
         imports: envelope.imports,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_query() {
+        assert_eq!(resolve_query(Some("foo")), "foo");
+        assert_eq!(resolve_query(Some("")), DEFAULT_QUERY);
+        assert_eq!(resolve_query(None), DEFAULT_QUERY);
+    }
+
+    #[test]
+    fn test_resolve_offset() {
+        assert_eq!(resolve_offset(Some(42)), 42);
+        assert_eq!(resolve_offset(None), DEFAULT_OFFSET);
+    }
+
+    #[test]
+    fn test_resolve_limit() {
+        // None returns DEFAULT_LIMIT
+        assert_eq!(resolve_limit(None), DEFAULT_LIMIT);
+
+        // Some(value < MAX_LIMIT) returns value
+        assert_eq!(resolve_limit(Some(50)), 50);
+
+        // Some(MAX_LIMIT) returns MAX_LIMIT
+        assert_eq!(resolve_limit(Some(MAX_LIMIT)), MAX_LIMIT);
+
+        // Some(value > MAX_LIMIT) returns MAX_LIMIT
+        assert_eq!(resolve_limit(Some(2000)), MAX_LIMIT);
+    }
+}

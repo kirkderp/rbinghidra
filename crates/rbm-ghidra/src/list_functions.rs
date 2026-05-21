@@ -150,3 +150,22 @@ pub async fn list_functions(
         functions: page,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_query() {
+        assert_eq!(resolve_query(None), ".*");
+        assert_eq!(resolve_query(Some("")), ".*");
+        assert_eq!(resolve_query(Some("main")), "main");
+    }
+
+    #[test]
+    fn test_resolve_offset() {
+        assert_eq!(resolve_offset(Some(10)), 10);
+        assert_eq!(resolve_offset(Some(0)), 0);
+        assert_eq!(resolve_offset(None), DEFAULT_OFFSET);
+    }
+}

@@ -104,7 +104,7 @@ impl ImportOptions {
 }
 
 impl ImportReport {
-    fn analyzing(
+    fn running(
         key: String,
         binary_name: String,
         project_dir: &Path,
@@ -117,7 +117,7 @@ impl ImportReport {
             "Import or analysis for this binary is already running. Retry ghidra_import later, or call ghidra_lock_status with the cache_key."
         };
         Self {
-            status: "analyzing".to_string(),
+            status: "running".to_string(),
             cache_key: key,
             binary_name,
             project_dir: project_dir.display().to_string(),
@@ -208,7 +208,7 @@ pub async fn import_binary_with_options(
     if cached_output_is_ready(&output_path).await? {
         let lock = ctx.manager.lock_for(&sha256_hex);
         if lock.try_lock_owned().is_err() {
-            return Ok(ImportReport::analyzing(
+            return Ok(ImportReport::running(
                 key,
                 binary_name,
                 &project_dir,
@@ -245,7 +245,7 @@ pub async fn import_binary_with_options(
     let lock = ctx.manager.lock_for(&sha256_hex);
 
     match lock.try_lock_owned() {
-        Err(_) => Ok(ImportReport::analyzing(
+        Err(_) => Ok(ImportReport::running(
             key,
             binary_name,
             &project_dir,
@@ -275,7 +275,7 @@ pub async fn import_binary_with_options(
                 timeout: ctx.timeout,
             };
             spawn_import_task(guard, runner, spec, output_path.clone(), error_path);
-            Ok(ImportReport::analyzing(
+            Ok(ImportReport::running(
                 key,
                 binary_name,
                 &project_dir,

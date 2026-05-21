@@ -32,6 +32,7 @@ import java.util.regex.Pattern;
 
 public class dynamic_dispatch_table extends GhidraScript {
     private static final String SCHEMA = "rbm.ghidra.dynamic_dispatch_table.v0";
+    private static final Pattern BASE_REGISTER_PATTERN = Pattern.compile("(?i)\\[\\s*([a-z][a-z0-9]*)");
     private static final Pattern MEM8_PATTERN = Pattern.compile(
         "(?i)\\[\\s*([a-z][a-z0-9]*)\\s*\\+\\s*([a-z][a-z0-9]*)\\s*\\*\\s*(?:0x)?8\\s*(?:\\+\\s*(0x[0-9a-f]+|\\d+))?\\s*\\]");
     private static final Pattern GLOBAL_PATTERN = Pattern.compile("(?i)0x[0-9a-f]{6,16}");
@@ -734,7 +735,7 @@ public class dynamic_dispatch_table extends GhidraScript {
         if (text == null) {
             return "";
         }
-        Matcher m = Pattern.compile("(?i)\\[\\s*([a-z][a-z0-9]*)").matcher(text);
+        Matcher m = BASE_REGISTER_PATTERN.matcher(text);
         if (m.find()) {
             return m.group(1).toUpperCase();
         }

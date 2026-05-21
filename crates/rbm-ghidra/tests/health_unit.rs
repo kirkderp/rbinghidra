@@ -7,6 +7,7 @@ use rbm_ghidra::health::{
     assemble_health, discover_install_dir, is_valid_ghidra_dir, parse_application_properties,
     probe_at,
 };
+use serial_test::serial;
 use tempfile::TempDir;
 
 const GOOD_PROPS: &str = "\
@@ -330,6 +331,7 @@ fn is_valid_ghidra_dir_accepts_synthetic_layout() {
 }
 
 #[test]
+#[serial]
 fn discover_install_dir_respects_env_override() {
     // Set env var to a nonexistent dir -> should return None (since it's not valid)
     // First, test with a valid synthetic dir
@@ -364,6 +366,7 @@ fn discover_install_dir_respects_env_override() {
 }
 
 #[test]
+#[serial]
 fn discover_install_dir_env_override_ignores_invalid() {
     // Set env var to a dir that doesn't look like Ghidra -> should fall through to known paths
     let tmp = TempDir::new().unwrap();

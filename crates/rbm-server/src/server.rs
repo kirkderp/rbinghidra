@@ -5,24 +5,26 @@ use std::sync::Arc;
 use rbm_core::ServerConfig;
 use rbm_ghidra::inspect::parse_sha256_lookup;
 use rbm_ghidra::{
-    AntiAnalysisContext, BehaviorsContext, CallGraphContext, CfgContext, ContextApiSlotsContext,
-    DataTypesContext, DecompileContext, DecompileMetaContext, DecompilerBlockBehaviorContext,
-    DecompilerBlockBehaviorFilter, DecompilerCallsContext, DecompilerCallsFilter,
-    DecompilerCfgContext, DecompilerMemoryContext, DecompilerMemoryFilter, DecompilerSliceContext,
-    DefinedDataContext, DisassembleContext, DynamicDispatchTableContext,
-    DynamicDispatchTableOptions, EquatesContext, FunctionCheckpointsContext, FunctionSlicesContext,
-    FunctionSlicesOptions, FunctionStatsContext, ImportContext, ImportOptions,
-    ImportsExportsContext, MemoryMapContext, NamespacesContext, PathDigestContext,
-    PathDigestOptions, PcodeContext, ProjectManager, ReadBytesContext, SearchBytesContext,
-    SearchStringsContext, SymbolsContext, ThunkTargetContext, VariablesContext, XrefsContext,
+    AntiAnalysisContext, BehaviorsContext, CallGraphContext, CfgContext, ConstantsContext,
+    ConstantsOptions, ContextApiSlotsContext, DataTypesContext, DecompileContext,
+    DecompileMetaContext, DecompilerBlockBehaviorContext, DecompilerBlockBehaviorFilter,
+    DecompilerCallsContext, DecompilerCallsFilter, DecompilerCfgContext, DecompilerMemoryContext,
+    DecompilerMemoryFilter, DecompilerSliceContext, DefinedDataContext, DisassembleContext,
+    DynamicDispatchTableContext, DynamicDispatchTableOptions, EquatesContext,
+    FunctionCheckpointsContext, FunctionSlicesContext, FunctionSlicesOptions, FunctionStatsContext,
+    GoMetadataContext, ImportContext, ImportOptions, ImportsExportsContext, MemoryMapContext,
+    NamespacesContext, PathDigestContext, PathDigestOptions, PcodeContext, ProjectManager,
+    ReadBytesContext, SearchBytesContext, SearchDecompilationContext, SearchStringsContext,
+    StringContextContext, SymbolsContext, ThunkTargetContext, VariablesContext, XrefsContext,
     decompile_function, delete_cached_binary, disassemble_function, gen_callgraph, gen_cfg,
     gen_decompiler_cfg, get_cached_metadata, get_context_api_slots, get_data_types,
     get_decompile_meta, get_decompiler_block_behavior, get_decompiler_calls, get_decompiler_memory,
     get_decompiler_slice, get_equates, get_function_checkpoints, get_function_slices,
-    get_function_stats, get_memory_map, get_path_digest, get_pcode, get_thunk_target,
-    get_variables, import_binary_with_options, list_cached_binaries, list_defined_data,
-    list_exports, list_functions, list_imports, list_namespaces, list_xrefs, probe_at, read_bytes,
-    recover_dynamic_dispatch_table, scan_anti_analysis, scan_behaviors, search_bytes,
+    get_function_stats, get_go_metadata, get_memory_map, get_path_digest, get_pcode,
+    get_string_context, get_thunk_target, get_variables, import_binary_with_options,
+    list_cached_binaries, list_defined_data, list_exports, list_functions, list_imports,
+    list_namespaces, list_xrefs, probe_at, read_bytes, recover_dynamic_dispatch_table,
+    scan_anti_analysis, scan_behaviors, scan_constants, search_bytes, search_decompilation,
     search_strings, search_symbols,
 };
 use rmcp::handler::server::ServerHandler;
@@ -222,6 +224,89 @@ impl RbmServer {
                 "Search strings",
                 schema(
                     with_paging(vec![("binary_name", binary_ref())]),
+                    vec!["binary_name"],
+                ),
+            ),
+            t(
+                "ghidra_string_context",
+                "Find strings and return xrefs with short decompiler snippets from referrer functions",
+                schema(
+                    vec![
+                        ("binary_name", binary_ref()),
+                        ("query", req("string substring/regex literal or address")),
+                        (
+                            "string_limit",
+                            opt_u32_capped("max matching strings", 5, 25),
+                        ),
+                        ("xref_limit", opt_u32_capped("max xrefs per string", 10, 50)),
+                        (
+                            "snippet_chars",
+                            opt_u32_capped("max decompiler snippet characters", 1200, 4000),
+                        ),
+                    ],
+                    vec!["binary_name", "query"],
+                ),
+            ),
+            t(
+                "ghidra_search_decompilation",
+                "Search decompiled pseudocode across functions",
+                schema(
+                    vec![
+                        ("binary_name", binary_ref()),
+                        ("query", req("case-insensitive regex to find in pseudocode")),
+                        ("offset", opt_u32("result offset", 0)),
+                        ("limit", opt_u32_capped("max matching functions", 25, 200)),
+                        (
+                            "context_lines",
+                            opt_u32_capped("source lines around first match", 2, 10),
+                        ),
+                        (
+                            "max_functions",
+                            opt_u32_capped("max functions to decompile before stopping", 500, 5000),
+                        ),
+                    ],
+                    vec!["binary_name", "query"],
+                ),
+            ),
+            t(
+                "ghidra_constants",
+                "Scan instruction constants and immediates",
+                schema(
+                    vec![
+                        ("binary_name", binary_ref()),
+                        (
+                            "mode",
+                            json!({"type": "string", "description": "constant scan mode", "enum": ["common", "uses", "range"], "default": "common"}),
+                        ),
+                        ("value", opt_s("constant for mode=uses; decimal or 0x hex")),
+                        (
+                            "min_value",
+                            opt_s("minimum constant for mode=range; decimal or 0x hex"),
+                        ),
+                        (
+                            "max_value",
+                            opt_s("maximum constant for mode=range; decimal or 0x hex"),
+                        ),
+                        (
+                            "include_small_values",
+                            json!({"type": "boolean", "description": "include 0..255 constants", "default": false}),
+                        ),
+                        ("limit", opt_u32_capped("max constants", 100, 1000)),
+                    ],
+                    vec!["binary_name"],
+                ),
+            ),
+            t(
+                "ghidra_go_metadata",
+                "Heuristically extract Go build/package/module indicators",
+                schema(
+                    vec![
+                        ("binary_name", binary_ref()),
+                        (
+                            "limit",
+                            opt_u32_capped("max entries per category", 100, 1000),
+                        ),
+                    ],
                     vec!["binary_name"],
                 ),
             ),
@@ -1004,6 +1089,94 @@ impl ServerHandler for RbmServer {
                 self.ok_json(result)
             }
 
+            "ghidra_string_context" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = StringContextContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_string_context(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "query"),
+                    self.opt_u64(&params, "string_limit"),
+                    self.opt_u64(&params, "xref_limit"),
+                    self.opt_u64(&params, "snippet_chars"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_search_decompilation" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = SearchDecompilationContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = search_decompilation(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    &self.s(&params, "query"),
+                    self.opt_u64(&params, "offset"),
+                    self.opt_u64(&params, "limit"),
+                    self.opt_u64(&params, "context_lines"),
+                    self.opt_u64(&params, "max_functions"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_constants" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = ConstantsContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = scan_constants(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    ConstantsOptions {
+                        mode: self.opt_s(&params, "mode"),
+                        value: self.opt_s(&params, "value"),
+                        min_value: self.opt_s(&params, "min_value"),
+                        max_value: self.opt_s(&params, "max_value"),
+                        include_small_values: self
+                            .opt_bool(&params, "include_small_values")
+                            .unwrap_or(false),
+                        limit: self.opt_u64(&params, "limit"),
+                    },
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
+            "ghidra_go_metadata" => {
+                let rt = self.ghidra_runtime().map_err(err)?;
+                let ctx = GoMetadataContext {
+                    manager: self.ghidra_projects.clone(),
+                    analyze_headless: rt.analyze_headless,
+                    scripts_dir: rt.scripts_dir,
+                    timeout: self.config.ghidra_call_timeout,
+                };
+                let result = get_go_metadata(
+                    &ctx,
+                    &self.s(&params, "binary_name"),
+                    self.opt_u64(&params, "limit"),
+                )
+                .await
+                .map_err(|e| err(e.to_string()))?;
+                self.ok_json(result)
+            }
+
             "ghidra_symbols" => {
                 let rt = self.ghidra_runtime().map_err(err)?;
                 let ctx = SymbolsContext {
@@ -1605,6 +1778,35 @@ impl ServerHandler for RbmServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_server_creation_and_accessors() {
+        use rbm_core::paths::CachePaths;
+        use std::time::Duration;
+
+        let config = ServerConfig {
+            cache: CachePaths::new("/tmp/rbm-cache"),
+            ghidra_install_dir: Some(PathBuf::from("/opt/ghidra")),
+            ghidra_scripts_dir: PathBuf::from("/opt/ghidra/scripts"),
+            ghidra_call_timeout: Duration::from_secs(60),
+            ghidra_import_timeout: Duration::from_secs(300),
+        };
+
+        let server = RbmServer::new(config);
+
+        let retrieved_config = server.config();
+        assert_eq!(
+            retrieved_config.ghidra_install_dir.as_deref(),
+            Some(PathBuf::from("/opt/ghidra").as_path())
+        );
+        assert_eq!(
+            retrieved_config.ghidra_call_timeout,
+            Duration::from_secs(60)
+        );
+
+        let projects = server.ghidra_projects();
+        assert_eq!(projects.held_shas().len(), 0);
+    }
 
     fn schema_for(name: &str) -> serde_json::Value {
         let tool = RbmServer::build_tools()
