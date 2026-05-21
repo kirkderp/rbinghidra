@@ -30,6 +30,8 @@ import java.util.regex.Pattern;
 public class path_digest extends GhidraScript {
     private static final String SCHEMA = "rbm.ghidra.path_digest.v0";
     private static final Pattern IMM = Pattern.compile("(?i)\\b0x([0-9a-f]{1,16})\\b|\\b(\\d{1,20})\\b");
+    private static final Pattern MEM_OPERAND_PATTERN = Pattern.compile("(?i)^(.+?)([+-])(0x[0-9a-f]+|\\d+)$");
+    private static final Pattern STACK_ARG_PATTERN = Pattern.compile("\\+0x([0-9a-f]+)|\\+(\\d+)");
 
     @Override
     public void run() throws Exception {
@@ -1036,7 +1038,7 @@ public class path_digest extends GhidraScript {
             }
             int offset = 0;
             String base = inner;
-            Matcher m = Pattern.compile("(?i)^(.+?)([+-])(0x[0-9a-f]+|\\d+)$").matcher(inner);
+            Matcher m = MEM_OPERAND_PATTERN.matcher(inner);
             if (m.matches()) {
                 base = m.group(1);
                 Long parsed = parseLongLiteral(m.group(3));
@@ -1091,7 +1093,7 @@ public class path_digest extends GhidraScript {
     }
 
     private int stackArgIndex(String dst) {
-        Matcher m = Pattern.compile("\\+0x([0-9a-f]+)|\\+(\\d+)").matcher(dst);
+        Matcher m = STACK_ARG_PATTERN.matcher(dst);
         long offset = 0;
         if (m.find()) {
             Long parsed = parseLongLiteral(m.group(1) != null ? "0x" + m.group(1) : m.group(2));
