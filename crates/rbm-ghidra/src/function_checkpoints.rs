@@ -189,11 +189,9 @@ pub async fn get_function_checkpoints(
     if name_or_address.trim().is_empty() {
         return Err(FunctionCheckpointsError::EmptyQuery);
     }
-    let simplification_style =
-        crate::utils::resolve_simplification_style(simplification_style).ok_or_else(|| {
-            FunctionCheckpointsError::InvalidSimplificationStyle {
-                style: simplification_style.unwrap_or_default().to_string(),
-            }
+    let simplification_style = crate::utils::resolve_simplification_style(simplification_style)
+        .ok_or_else(|| FunctionCheckpointsError::InvalidSimplificationStyle {
+            style: simplification_style.unwrap_or_default().to_string(),
         })?;
 
     let ranges_arg = ranges.unwrap_or("").trim();
@@ -280,4 +278,3 @@ fn hex_prefix(bytes: &[u8], len: usize) -> String {
         .map(char::from)
         .collect()
 }
-

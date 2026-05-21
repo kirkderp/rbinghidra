@@ -156,11 +156,9 @@ pub async fn get_pcode(
     if name_or_address.trim().is_empty() {
         return Err(PcodeError::EmptyQuery);
     }
-    let simplification_style =
-        crate::utils::resolve_simplification_style(simplification_style).ok_or_else(|| {
-            PcodeError::InvalidSimplificationStyle {
-                style: simplification_style.unwrap_or_default().to_string(),
-            }
+    let simplification_style = crate::utils::resolve_simplification_style(simplification_style)
+        .ok_or_else(|| PcodeError::InvalidSimplificationStyle {
+            style: simplification_style.unwrap_or_default().to_string(),
         })?;
 
     let WarmPathProduct {
@@ -217,4 +215,3 @@ pub async fn get_pcode(
         resolution_error: envelope.resolution_error,
     })
 }
-

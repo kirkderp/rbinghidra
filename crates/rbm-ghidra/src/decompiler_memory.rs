@@ -183,8 +183,6 @@ fn normalize_memory_result(result: &mut DecompilerMemoryResult) {
     result.blocks.sort_by_key(|block| block.index);
 }
 
-
-
 /// Return memory-access facts from the decompiler CFG output.
 ///
 /// # Errors
@@ -202,11 +200,9 @@ pub async fn get_decompiler_memory(
     if name_or_address.trim().is_empty() {
         return Err(DecompilerCfgError::EmptyQuery);
     }
-    let simplification_style =
-        crate::utils::resolve_simplification_style(simplification_style).ok_or_else(|| {
-            DecompilerCfgError::InvalidSimplificationStyle {
-                style: simplification_style.unwrap_or_default().to_string(),
-            }
+    let simplification_style = crate::utils::resolve_simplification_style(simplification_style)
+        .ok_or_else(|| DecompilerCfgError::InvalidSimplificationStyle {
+            style: simplification_style.unwrap_or_default().to_string(),
         })?;
 
     let WarmPathProduct {

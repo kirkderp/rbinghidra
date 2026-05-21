@@ -266,8 +266,6 @@ fn normalize_block_behavior_result(result: &mut DecompilerBlockBehaviorResult) {
     }
 }
 
-
-
 /// Return block-level behavior facts from the decompiler CFG output.
 ///
 /// # Errors
@@ -285,11 +283,9 @@ pub async fn get_decompiler_block_behavior(
     if name_or_address.trim().is_empty() {
         return Err(DecompilerCfgError::EmptyQuery);
     }
-    let simplification_style =
-        crate::utils::resolve_simplification_style(simplification_style).ok_or_else(|| {
-            DecompilerCfgError::InvalidSimplificationStyle {
-                style: simplification_style.unwrap_or_default().to_string(),
-            }
+    let simplification_style = crate::utils::resolve_simplification_style(simplification_style)
+        .ok_or_else(|| DecompilerCfgError::InvalidSimplificationStyle {
+            style: simplification_style.unwrap_or_default().to_string(),
         })?;
 
     let WarmPathProduct {

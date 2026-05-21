@@ -251,8 +251,6 @@ fn normalize_calls_result(result: &mut DecompilerCallsResult) {
     }
 }
 
-
-
 /// Return callsite facts from the decompiler CFG output.
 ///
 /// # Errors
@@ -270,11 +268,9 @@ pub async fn get_decompiler_calls(
     if name_or_address.trim().is_empty() {
         return Err(DecompilerCfgError::EmptyQuery);
     }
-    let simplification_style =
-        crate::utils::resolve_simplification_style(simplification_style).ok_or_else(|| {
-            DecompilerCfgError::InvalidSimplificationStyle {
-                style: simplification_style.unwrap_or_default().to_string(),
-            }
+    let simplification_style = crate::utils::resolve_simplification_style(simplification_style)
+        .ok_or_else(|| DecompilerCfgError::InvalidSimplificationStyle {
+            style: simplification_style.unwrap_or_default().to_string(),
         })?;
 
     let WarmPathProduct {

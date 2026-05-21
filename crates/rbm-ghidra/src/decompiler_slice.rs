@@ -185,11 +185,9 @@ pub async fn get_decompiler_slice(
         resolve_direction(direction).ok_or_else(|| DecompilerSliceError::InvalidDirection {
             direction: direction.unwrap_or_default().to_string(),
         })?;
-    let simplification_style =
-        crate::utils::resolve_simplification_style(simplification_style).ok_or_else(|| {
-            DecompilerSliceError::InvalidSimplificationStyle {
-                style: simplification_style.unwrap_or_default().to_string(),
-            }
+    let simplification_style = crate::utils::resolve_simplification_style(simplification_style)
+        .ok_or_else(|| DecompilerSliceError::InvalidSimplificationStyle {
+            style: simplification_style.unwrap_or_default().to_string(),
         })?;
     let max_ops = resolve_max_ops(max_ops);
 
@@ -265,8 +263,6 @@ fn resolve_direction(direction: Option<&str>) -> Option<&'static str> {
         _ => None,
     }
 }
-
-
 
 fn resolve_max_ops(max_ops: u32) -> u32 {
     if max_ops == 0 {

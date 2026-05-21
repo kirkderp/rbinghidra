@@ -175,11 +175,9 @@ pub async fn decompile_function(
     if name_or_address.trim().is_empty() {
         return Err(DecompileError::EmptyQuery);
     }
-    let simplification_style =
-        crate::utils::resolve_simplification_style(simplification_style).ok_or_else(|| {
-            DecompileError::InvalidSimplificationStyle {
-                style: simplification_style.unwrap_or_default().to_string(),
-            }
+    let simplification_style = crate::utils::resolve_simplification_style(simplification_style)
+        .ok_or_else(|| DecompileError::InvalidSimplificationStyle {
+            style: simplification_style.unwrap_or_default().to_string(),
         })?;
 
     let WarmPathProduct {
@@ -235,4 +233,3 @@ pub async fn decompile_function(
         resolution_error: envelope.resolution_error,
     })
 }
-

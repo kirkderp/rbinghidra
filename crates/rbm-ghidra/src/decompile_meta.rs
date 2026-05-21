@@ -215,11 +215,9 @@ pub async fn get_decompile_meta(
     if name_or_address.trim().is_empty() {
         return Err(DecompileMetaError::EmptyQuery);
     }
-    let simplification_style =
-        crate::utils::resolve_simplification_style(simplification_style).ok_or_else(|| {
-            DecompileMetaError::InvalidSimplificationStyle {
-                style: simplification_style.unwrap_or_default().to_string(),
-            }
+    let simplification_style = crate::utils::resolve_simplification_style(simplification_style)
+        .ok_or_else(|| DecompileMetaError::InvalidSimplificationStyle {
+            style: simplification_style.unwrap_or_default().to_string(),
         })?;
     let token_limit = resolve_token_limit(token_limit);
 
@@ -281,8 +279,6 @@ pub async fn get_decompile_meta(
         resolution_error: envelope.resolution_error,
     })
 }
-
-
 
 fn resolve_token_limit(limit: u32) -> u32 {
     if limit == 0 {

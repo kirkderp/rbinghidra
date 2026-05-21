@@ -360,11 +360,9 @@ pub async fn gen_decompiler_cfg(
     if name_or_address.trim().is_empty() {
         return Err(DecompilerCfgError::EmptyQuery);
     }
-    let simplification_style =
-        crate::utils::resolve_simplification_style(simplification_style).ok_or_else(|| {
-            DecompilerCfgError::InvalidSimplificationStyle {
-                style: simplification_style.unwrap_or_default().to_string(),
-            }
+    let simplification_style = crate::utils::resolve_simplification_style(simplification_style)
+        .ok_or_else(|| DecompilerCfgError::InvalidSimplificationStyle {
+            style: simplification_style.unwrap_or_default().to_string(),
         })?;
 
     let WarmPathProduct {
@@ -425,4 +423,3 @@ pub async fn gen_decompiler_cfg(
         mermaid: envelope.mermaid,
     })
 }
-
