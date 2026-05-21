@@ -293,3 +293,23 @@ pub async fn list_imports(
         imports: envelope.imports,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_limit() {
+        // None returns DEFAULT_LIMIT
+        assert_eq!(resolve_limit(None), DEFAULT_LIMIT);
+
+        // Some(value < MAX_LIMIT) returns value
+        assert_eq!(resolve_limit(Some(50)), 50);
+
+        // Some(MAX_LIMIT) returns MAX_LIMIT
+        assert_eq!(resolve_limit(Some(MAX_LIMIT)), MAX_LIMIT);
+
+        // Some(value > MAX_LIMIT) returns MAX_LIMIT
+        assert_eq!(resolve_limit(Some(2000)), MAX_LIMIT);
+    }
+}
