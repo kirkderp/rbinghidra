@@ -1779,6 +1779,35 @@ impl ServerHandler for RbmServer {
 mod tests {
     use super::*;
 
+    #[test]
+    fn test_server_creation_and_accessors() {
+        use rbm_core::paths::CachePaths;
+        use std::time::Duration;
+
+        let config = ServerConfig {
+            cache: CachePaths::new("/tmp/rbm-cache"),
+            ghidra_install_dir: Some(PathBuf::from("/opt/ghidra")),
+            ghidra_scripts_dir: PathBuf::from("/opt/ghidra/scripts"),
+            ghidra_call_timeout: Duration::from_secs(60),
+            ghidra_import_timeout: Duration::from_secs(300),
+        };
+
+        let server = RbmServer::new(config);
+
+        let retrieved_config = server.config();
+        assert_eq!(
+            retrieved_config.ghidra_install_dir.as_deref(),
+            Some(PathBuf::from("/opt/ghidra").as_path())
+        );
+        assert_eq!(
+            retrieved_config.ghidra_call_timeout,
+            Duration::from_secs(60)
+        );
+
+        let projects = server.ghidra_projects();
+        assert_eq!(projects.held_shas().len(), 0);
+    }
+
     fn schema_for(name: &str) -> serde_json::Value {
         let tool = RbmServer::build_tools()
             .into_iter()
