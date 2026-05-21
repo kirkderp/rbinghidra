@@ -33,6 +33,7 @@ public class function_slices extends GhidraScript {
     private static final int CONTEXT_BEFORE = 18;
     private static final int CONTEXT_AFTER = 12;
     private static final Pattern IMM = Pattern.compile("(?i)\\b0x([0-9a-f]{1,16})\\b|\\b(\\d{1,20})\\b");
+    private static final Pattern STACK_ARG = Pattern.compile("\\+0x([0-9a-f]+)|\\+(\\d+)");
 
     @Override
     public void run() throws Exception {
@@ -948,7 +949,7 @@ public class function_slices extends GhidraScript {
     }
 
     private int stackArgIndex(String dst) {
-        Matcher m = Pattern.compile("\\+0x([0-9a-f]+)|\\+(\\d+)").matcher(dst);
+        Matcher m = STACK_ARG.matcher(dst);
         long offset = 0;
         if (m.find()) {
             Long parsed = parseLongLiteral(m.group(1) != null ? "0x" + m.group(1) : m.group(2));
