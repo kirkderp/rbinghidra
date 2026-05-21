@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::decompiler_cfg::DecompilerCfgError;
 use crate::project::{DYNAMIC_DISPATCH_TABLE_SCRIPT, ProjectManager, cache_key};
-use crate::warm_path::{WarmPathError, WarmPathProduct, WarmPathRequest, execute_warm_path};
+use crate::warm_path::{WarmPathProduct, WarmPathRequest, execute_warm_path};
 
 pub const DYNAMIC_DISPATCH_TABLE_SCHEMA: &str = "rbm.ghidra.dynamic_dispatch_table.v0";
 const OUTPUT_PREFIX: &str = "dynamic_dispatch_table";
@@ -34,23 +34,6 @@ pub struct DynamicDispatchTableOptions<'a> {
     pub candidate_names: &'a str,
     pub max_instructions: u32,
     pub limit: u32,
-}
-
-fn map_warm_error(err: WarmPathError) -> DecompilerCfgError {
-    match err {
-        WarmPathError::Inspect(e) => DecompilerCfgError::Inspect(e),
-        WarmPathError::LockHeld { sha256 } => DecompilerCfgError::LockHeld { sha256 },
-        WarmPathError::PathValidation(e) => DecompilerCfgError::PathValidation(e),
-        WarmPathError::ProjectFileMissing(p) => DecompilerCfgError::ProjectFileMissing(p),
-        WarmPathError::HeadlessFailed { exit_code, stderr } => {
-            DecompilerCfgError::HeadlessFailed { exit_code, stderr }
-        }
-        WarmPathError::OutputMissing { stdout, stderr } => {
-            DecompilerCfgError::OutputMissing { stdout, stderr }
-        }
-        WarmPathError::Headless(e) => DecompilerCfgError::Headless(e),
-        WarmPathError::Io { path, source } => DecompilerCfgError::Io { path, source },
-    }
 }
 
 /// Recover a dynamic dispatch table from decompiler output.
@@ -110,8 +93,7 @@ pub async fn recover_dynamic_dispatch_table(
             options.candidate_names.to_string(),
         ],
     })
-    .await
-    .map_err(map_warm_error)?;
+    .await?;
 
     let mut value: Value =
         serde_json::from_slice(&bytes).map_err(|err| DecompilerCfgError::Parse {

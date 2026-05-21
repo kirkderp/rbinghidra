@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::decompiler_cfg::DecompilerCfgError;
 use crate::project::{CONTEXT_API_SLOTS_SCRIPT, ProjectManager, cache_key};
-use crate::warm_path::{WarmPathError, WarmPathProduct, WarmPathRequest, execute_warm_path};
+use crate::warm_path::{WarmPathProduct, WarmPathRequest, execute_warm_path};
 
 pub const CONTEXT_API_SLOTS_SCHEMA: &str = "rbm.ghidra.context_api_slots.v0";
 const OUTPUT_PREFIX: &str = "context_api_slots";
@@ -27,23 +27,6 @@ pub struct ContextApiSlotsOptions<'a> {
     pub module_resolver: &'a str,
     pub context_stack_offset: &'a str,
     pub limit: u32,
-}
-
-fn map_warm_error(err: WarmPathError) -> DecompilerCfgError {
-    match err {
-        WarmPathError::Inspect(e) => DecompilerCfgError::Inspect(e),
-        WarmPathError::LockHeld { sha256 } => DecompilerCfgError::LockHeld { sha256 },
-        WarmPathError::PathValidation(e) => DecompilerCfgError::PathValidation(e),
-        WarmPathError::ProjectFileMissing(p) => DecompilerCfgError::ProjectFileMissing(p),
-        WarmPathError::HeadlessFailed { exit_code, stderr } => {
-            DecompilerCfgError::HeadlessFailed { exit_code, stderr }
-        }
-        WarmPathError::OutputMissing { stdout, stderr } => {
-            DecompilerCfgError::OutputMissing { stdout, stderr }
-        }
-        WarmPathError::Headless(e) => DecompilerCfgError::Headless(e),
-        WarmPathError::Io { path, source } => DecompilerCfgError::Io { path, source },
-    }
 }
 
 /// Recover context API slot assignments from a cached binary.
@@ -90,8 +73,7 @@ pub async fn get_context_api_slots(
             limit.to_string(),
         ],
     })
-    .await
-    .map_err(map_warm_error)?;
+    .await?;
 
     let mut value: Value =
         serde_json::from_slice(&bytes).map_err(|err| DecompilerCfgError::Parse {
