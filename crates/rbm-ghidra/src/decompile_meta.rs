@@ -14,7 +14,6 @@ use crate::warm_path::{WarmPathProduct, WarmPathRequest, execute_warm_path};
 
 pub const DECOMPILE_META_SCHEMA: &str = "rbm.ghidra.decompile_meta.v0";
 const OUTPUT_PREFIX: &str = "decompile_meta";
-const DEFAULT_SIMPLIFICATION_STYLE: &str = "decompile";
 const DEFAULT_TOKEN_LIMIT: u32 = 200;
 const MAX_TOKEN_LIMIT: u32 = 2000;
 
@@ -217,7 +216,7 @@ pub async fn get_decompile_meta(
         return Err(DecompileMetaError::EmptyQuery);
     }
     let simplification_style =
-        resolve_simplification_style(simplification_style).ok_or_else(|| {
+        crate::utils::resolve_simplification_style(simplification_style).ok_or_else(|| {
             DecompileMetaError::InvalidSimplificationStyle {
                 style: simplification_style.unwrap_or_default().to_string(),
             }
@@ -283,16 +282,7 @@ pub async fn get_decompile_meta(
     })
 }
 
-fn resolve_simplification_style(style: Option<&str>) -> Option<&'static str> {
-    match style.unwrap_or(DEFAULT_SIMPLIFICATION_STYLE).trim() {
-        "" | DEFAULT_SIMPLIFICATION_STYLE => Some(DEFAULT_SIMPLIFICATION_STYLE),
-        "normalize" => Some("normalize"),
-        "register" => Some("register"),
-        "firstpass" => Some("firstpass"),
-        "paramid" => Some("paramid"),
-        _ => None,
-    }
-}
+
 
 fn resolve_token_limit(limit: u32) -> u32 {
     if limit == 0 {

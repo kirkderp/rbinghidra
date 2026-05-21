@@ -12,7 +12,6 @@ use crate::warm_path::{WarmPathError, WarmPathProduct, WarmPathRequest, execute_
 
 pub const DECOMPILER_MEMORY_SCHEMA: &str = "rbm.ghidra.decompiler_memory.v0";
 const OUTPUT_PREFIX: &str = "decompiler_memory";
-const DEFAULT_SIMPLIFICATION_STYLE: &str = "decompile";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct DecompilerMemoryFilter {
@@ -184,16 +183,7 @@ fn normalize_memory_result(result: &mut DecompilerMemoryResult) {
     result.blocks.sort_by_key(|block| block.index);
 }
 
-fn resolve_simplification_style(style: Option<&str>) -> Option<&'static str> {
-    match style.unwrap_or(DEFAULT_SIMPLIFICATION_STYLE).trim() {
-        "" | DEFAULT_SIMPLIFICATION_STYLE => Some(DEFAULT_SIMPLIFICATION_STYLE),
-        "normalize" => Some("normalize"),
-        "register" => Some("register"),
-        "firstpass" => Some("firstpass"),
-        "paramid" => Some("paramid"),
-        _ => None,
-    }
-}
+
 
 /// Return memory-access facts from the decompiler CFG output.
 ///
@@ -213,7 +203,7 @@ pub async fn get_decompiler_memory(
         return Err(DecompilerCfgError::EmptyQuery);
     }
     let simplification_style =
-        resolve_simplification_style(simplification_style).ok_or_else(|| {
+        crate::utils::resolve_simplification_style(simplification_style).ok_or_else(|| {
             DecompilerCfgError::InvalidSimplificationStyle {
                 style: simplification_style.unwrap_or_default().to_string(),
             }

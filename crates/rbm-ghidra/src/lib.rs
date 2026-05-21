@@ -71,6 +71,7 @@ pub mod string_context;
 pub mod strings;
 pub mod symbols;
 pub mod thunk_target;
+pub mod utils;
 pub mod variables;
 pub mod warm_path;
 pub mod xrefs;

@@ -14,7 +14,6 @@ use crate::warm_path::{WarmPathProduct, WarmPathRequest, execute_warm_path};
 
 pub const FUNCTION_CHECKPOINTS_SCHEMA: &str = "rbm.ghidra.function_checkpoints.v0";
 const OUTPUT_PREFIX: &str = "function_checkpoints";
-const DEFAULT_SIMPLIFICATION_STYLE: &str = "decompile";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionCheckpointStackRef {
@@ -191,7 +190,7 @@ pub async fn get_function_checkpoints(
         return Err(FunctionCheckpointsError::EmptyQuery);
     }
     let simplification_style =
-        resolve_simplification_style(simplification_style).ok_or_else(|| {
+        crate::utils::resolve_simplification_style(simplification_style).ok_or_else(|| {
             FunctionCheckpointsError::InvalidSimplificationStyle {
                 style: simplification_style.unwrap_or_default().to_string(),
             }
@@ -282,13 +281,3 @@ fn hex_prefix(bytes: &[u8], len: usize) -> String {
         .collect()
 }
 
-fn resolve_simplification_style(style: Option<&str>) -> Option<&'static str> {
-    match style.unwrap_or(DEFAULT_SIMPLIFICATION_STYLE).trim() {
-        "" | DEFAULT_SIMPLIFICATION_STYLE => Some(DEFAULT_SIMPLIFICATION_STYLE),
-        "normalize" => Some("normalize"),
-        "register" => Some("register"),
-        "firstpass" => Some("firstpass"),
-        "paramid" => Some("paramid"),
-        _ => None,
-    }
-}

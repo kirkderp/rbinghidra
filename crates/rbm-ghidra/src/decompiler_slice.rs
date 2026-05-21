@@ -15,7 +15,6 @@ use crate::warm_path::{WarmPathProduct, WarmPathRequest, execute_warm_path};
 pub const DECOMPILER_SLICE_SCHEMA: &str = "rbm.ghidra.decompiler_slice.v0";
 const OUTPUT_PREFIX: &str = "decompiler_slice";
 const DEFAULT_DIRECTION: &str = "both";
-const DEFAULT_SIMPLIFICATION_STYLE: &str = "decompile";
 const DEFAULT_MAX_OPS: u32 = 80;
 const MAX_OPS_CAP: u32 = 500;
 
@@ -187,7 +186,7 @@ pub async fn get_decompiler_slice(
             direction: direction.unwrap_or_default().to_string(),
         })?;
     let simplification_style =
-        resolve_simplification_style(simplification_style).ok_or_else(|| {
+        crate::utils::resolve_simplification_style(simplification_style).ok_or_else(|| {
             DecompilerSliceError::InvalidSimplificationStyle {
                 style: simplification_style.unwrap_or_default().to_string(),
             }
@@ -267,16 +266,7 @@ fn resolve_direction(direction: Option<&str>) -> Option<&'static str> {
     }
 }
 
-fn resolve_simplification_style(style: Option<&str>) -> Option<&'static str> {
-    match style.unwrap_or(DEFAULT_SIMPLIFICATION_STYLE).trim() {
-        "" | DEFAULT_SIMPLIFICATION_STYLE => Some(DEFAULT_SIMPLIFICATION_STYLE),
-        "normalize" => Some("normalize"),
-        "register" => Some("register"),
-        "firstpass" => Some("firstpass"),
-        "paramid" => Some("paramid"),
-        _ => None,
-    }
-}
+
 
 fn resolve_max_ops(max_ops: u32) -> u32 {
     if max_ops == 0 {

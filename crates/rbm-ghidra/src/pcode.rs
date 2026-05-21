@@ -11,7 +11,6 @@ use crate::warm_path::{WarmPathProduct, WarmPathRequest, execute_warm_path};
 
 pub const PCODE_SCHEMA: &str = "rbm.ghidra.pcode.v0";
 const OUTPUT_PREFIX: &str = "pcode";
-const DEFAULT_SIMPLIFICATION_STYLE: &str = "decompile";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PcodeVarnode {
@@ -158,7 +157,7 @@ pub async fn get_pcode(
         return Err(PcodeError::EmptyQuery);
     }
     let simplification_style =
-        resolve_simplification_style(simplification_style).ok_or_else(|| {
+        crate::utils::resolve_simplification_style(simplification_style).ok_or_else(|| {
             PcodeError::InvalidSimplificationStyle {
                 style: simplification_style.unwrap_or_default().to_string(),
             }
@@ -219,13 +218,3 @@ pub async fn get_pcode(
     })
 }
 
-fn resolve_simplification_style(style: Option<&str>) -> Option<&'static str> {
-    match style.unwrap_or(DEFAULT_SIMPLIFICATION_STYLE).trim() {
-        "" | DEFAULT_SIMPLIFICATION_STYLE => Some(DEFAULT_SIMPLIFICATION_STYLE),
-        "normalize" => Some("normalize"),
-        "register" => Some("register"),
-        "firstpass" => Some("firstpass"),
-        "paramid" => Some("paramid"),
-        _ => None,
-    }
-}
