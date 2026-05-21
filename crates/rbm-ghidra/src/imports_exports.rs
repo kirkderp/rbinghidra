@@ -293,3 +293,14 @@ pub async fn list_imports(
         imports: envelope.imports,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_offset() {
+        assert_eq!(resolve_offset(Some(42)), 42);
+        assert_eq!(resolve_offset(None), DEFAULT_OFFSET);
+    }
+}
