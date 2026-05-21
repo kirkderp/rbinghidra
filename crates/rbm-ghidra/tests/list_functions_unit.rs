@@ -215,6 +215,11 @@ fn resolve_limit_none_gives_default() {
 }
 
 #[test]
+fn resolve_limit_some_gives_value() {
+    assert_eq!(resolve_limit(Some(10)), 10);
+}
+
+#[test]
 fn resolve_limit_clamps_to_max() {
     assert_eq!(
         resolve_limit(Some(99999)),
