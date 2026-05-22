@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
 
-use crate::inspect::{InspectError, get_cached_metadata, read_cached_binary};
+use crate::inspect::{InspectError, get_cached_metadata};
 use crate::project::{
     HeadlessError, HeadlessRunner, PathValidationError, ProcessSpec, ProjectManager,
     stage_script_for_headless, validate_ghidra_environment,
@@ -214,9 +214,14 @@ pub async fn execute_warm_path(req: WarmPathRequest<'_>) -> Result<WarmPathProdu
         .map_err(|_| WarmPathError::LockHeld {
             sha256: sha256_hex.clone(),
         })?;
-    let cached = read_cached_binary(req.manager, &sha256_hex)
-        .await?
-        .ok_or_else(|| InspectError::NotFound(req.binary_query.to_string()))?;
+
+    // Check if the project directory still exists after acquiring the lock,
+    // in case it was deleted while we were waiting.
+    if !tokio::fs::try_exists(&project_dir).await.unwrap_or(false) {
+        return Err(WarmPathError::Inspect(InspectError::NotFound(
+            req.binary_query.to_string(),
+        )));
+    }
 
     let project_name = discover_project_name(&project_dir).await?;
     let program_name = discover_program_name(&project_dir, &project_name).await;
