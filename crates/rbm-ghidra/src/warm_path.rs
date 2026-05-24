@@ -142,21 +142,34 @@ pub fn per_call_output_path(project_dir: &Path, prefix: &str, query: &str) -> Pa
 
 #[must_use]
 pub fn sanitize_query_for_filename(query: &str) -> String {
-    let cleaned: String = query
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if cleaned.is_empty() {
-        "query".to_string()
-    } else {
-        cleaned
+    if query.is_empty() {
+        return "query".to_string();
     }
+
+    // Fast-path performance optimization: check if we need to sanitize first.
+    // This avoids unnecessary string allocation for already-safe queries.
+    let bytes = query.as_bytes();
+    let mut needs_sanitize = false;
+    for &b in bytes {
+        if !(b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.') {
+            needs_sanitize = true;
+            break;
+        }
+    }
+
+    if !needs_sanitize {
+        return query.to_string();
+    }
+
+    let mut cleaned = String::with_capacity(query.len());
+    for c in query.chars() {
+        if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
+            cleaned.push(c);
+        } else {
+            cleaned.push('_');
+        }
+    }
+    cleaned
 }
 
 pub async fn cleanup_output(path: &Path) {

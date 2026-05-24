@@ -1,0 +1,3 @@
+## 2024-06-25 - Optimize heavily used string sanitization with fast path
+**Learning:** String sanitization functions that heavily allocate via iterators (`query.chars().map(...).collect()`) for converting inputs like valid binary names/queries can be a bottleneck. The fast path using `.bytes().any(...)` to check if a string contains only valid characters is significantly faster than always iterating and allocating a new string when it's mostly safe.
+**Action:** Always consider the happy path (valid input) for sanitization functions and bypass full allocation/manipulation if possible, especially since paths and identifiers are mostly valid.
