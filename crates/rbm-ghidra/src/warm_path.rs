@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
 
-use crate::inspect::{InspectError, get_cached_metadata, read_cached_binary};
+use crate::inspect::{InspectError, get_cached_metadata};
 use crate::project::{
     HeadlessError, HeadlessRunner, PathValidationError, ProcessSpec, ProjectManager,
     stage_script_for_headless, validate_ghidra_environment,
@@ -142,21 +142,34 @@ pub fn per_call_output_path(project_dir: &Path, prefix: &str, query: &str) -> Pa
 
 #[must_use]
 pub fn sanitize_query_for_filename(query: &str) -> String {
-    let cleaned: String = query
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if cleaned.is_empty() {
-        "query".to_string()
-    } else {
-        cleaned
+    if query.is_empty() {
+        return "query".to_string();
     }
+
+    // Fast-path performance optimization: check if we need to sanitize first.
+    // This avoids unnecessary string allocation for already-safe queries.
+    let bytes = query.as_bytes();
+    let mut needs_sanitize = false;
+    for &b in bytes {
+        if !(b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.') {
+            needs_sanitize = true;
+            break;
+        }
+    }
+
+    if !needs_sanitize {
+        return query.to_string();
+    }
+
+    let mut cleaned = String::with_capacity(query.len());
+    for c in query.chars() {
+        if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
+            cleaned.push(c);
+        } else {
+            cleaned.push('_');
+        }
+    }
+    cleaned
 }
 
 pub async fn cleanup_output(path: &Path) {
@@ -214,9 +227,11 @@ pub async fn execute_warm_path(req: WarmPathRequest<'_>) -> Result<WarmPathProdu
         .map_err(|_| WarmPathError::LockHeld {
             sha256: sha256_hex.clone(),
         })?;
-    let cached = read_cached_binary(req.manager, &sha256_hex)
-        .await?
-        .ok_or_else(|| InspectError::NotFound(req.binary_query.to_string()))?;
+    // Check if the project directory still exists after acquiring the lock,
+    // in case it was deleted while we were waiting.
+    if !tokio::fs::try_exists(&project_dir).await.unwrap_or(false) {
+        return Err(InspectError::NotFound(req.binary_query.to_string()).into());
+    }
 
     let project_name = discover_project_name(&project_dir).await?;
     let program_name = discover_program_name(&project_dir, &project_name).await;

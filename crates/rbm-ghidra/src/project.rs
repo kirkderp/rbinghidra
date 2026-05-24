@@ -523,16 +523,30 @@ pub fn project_name_for(binary: &Path) -> String {
 
 #[must_use]
 pub fn sanitize_project_name(input: &str) -> String {
-    input
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect()
+    // Fast-path performance optimization: check if we need to sanitize first.
+    // This avoids unnecessary string allocation for already-safe project names.
+    let bytes = input.as_bytes();
+    let mut needs_sanitize = false;
+    for &b in bytes {
+        if !(b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.') {
+            needs_sanitize = true;
+            break;
+        }
+    }
+
+    if !needs_sanitize {
+        return input.to_string();
+    }
+
+    let mut cleaned = String::with_capacity(input.len());
+    for c in input.chars() {
+        if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
+            cleaned.push(c);
+        } else {
+            cleaned.push('_');
+        }
+    }
+    cleaned
 }
 
 /// Compute a SHA-256 digest for a regular file.
