@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -517,12 +518,12 @@ pub fn project_name_for(binary: &Path) -> String {
     binary
         .file_stem()
         .and_then(|s| s.to_str())
-        .map(sanitize_project_name)
+        .map(|s| sanitize_project_name(s).into_owned())
         .unwrap_or_default()
 }
 
 #[must_use]
-pub fn sanitize_project_name(input: &str) -> String {
+pub fn sanitize_project_name(input: &str) -> Cow<'_, str> {
     // Fast-path performance optimization: check if we need to sanitize first.
     // This avoids unnecessary string allocation for already-safe project names.
     let bytes = input.as_bytes();
@@ -535,7 +536,7 @@ pub fn sanitize_project_name(input: &str) -> String {
     }
 
     if !needs_sanitize {
-        return input.to_string();
+        return Cow::Borrowed(input);
     }
 
     let mut cleaned = String::with_capacity(input.len());
@@ -546,7 +547,7 @@ pub fn sanitize_project_name(input: &str) -> String {
             cleaned.push('_');
         }
     }
-    cleaned
+    Cow::Owned(cleaned)
 }
 
 /// Compute a SHA-256 digest for a regular file.

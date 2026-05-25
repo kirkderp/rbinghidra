@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -141,9 +142,9 @@ pub fn per_call_output_path(project_dir: &Path, prefix: &str, query: &str) -> Pa
 }
 
 #[must_use]
-pub fn sanitize_query_for_filename(query: &str) -> String {
+pub fn sanitize_query_for_filename(query: &str) -> Cow<'_, str> {
     if query.is_empty() {
-        return "query".to_string();
+        return Cow::Borrowed("query");
     }
 
     // Fast-path performance optimization: check if we need to sanitize first.
@@ -158,7 +159,7 @@ pub fn sanitize_query_for_filename(query: &str) -> String {
     }
 
     if !needs_sanitize {
-        return query.to_string();
+        return Cow::Borrowed(query);
     }
 
     let mut cleaned = String::with_capacity(query.len());
@@ -169,7 +170,7 @@ pub fn sanitize_query_for_filename(query: &str) -> String {
             cleaned.push('_');
         }
     }
-    cleaned
+    Cow::Owned(cleaned)
 }
 
 pub async fn cleanup_output(path: &Path) {
