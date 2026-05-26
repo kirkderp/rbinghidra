@@ -281,14 +281,11 @@ impl ProjectManager {
 
     #[must_use]
     pub fn is_lock_held(&self, sha256_hex: &str) -> bool {
-        let Some(lock) = self
-            .locks
-            .get(sha256_hex)
-            .map(|entry| entry.value().clone())
-        else {
+        let Some(lock) = self.locks.get(sha256_hex) else {
             return false;
         };
-        lock.try_lock_owned().is_err()
+        // avoid cloning the Arc
+        lock.value().try_lock().is_err()
     }
 
     #[must_use]
@@ -296,10 +293,9 @@ impl ProjectManager {
         self.locks
             .iter()
             .filter_map(|entry| {
-                let sha = entry.key().clone();
-                let lock = entry.value().clone();
-                if lock.try_lock_owned().is_err() {
-                    Some(sha)
+                // avoid cloning the Arc on every entry
+                if entry.value().try_lock().is_err() {
+                    Some(entry.key().clone())
                 } else {
                     None
                 }
