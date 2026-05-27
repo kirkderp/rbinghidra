@@ -150,20 +150,23 @@ pub fn sanitize_query_for_filename(query: &str) -> Cow<'_, str> {
     // Fast-path performance optimization: check if we need to sanitize first.
     // This avoids unnecessary string allocation for already-safe queries.
     let bytes = query.as_bytes();
-    let mut needs_sanitize = false;
-    for &b in bytes {
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
         if !(b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.') {
-            needs_sanitize = true;
             break;
         }
+        i += 1;
     }
 
-    if !needs_sanitize {
+    if i == bytes.len() {
         return Cow::Borrowed(query);
     }
 
     let mut cleaned = String::with_capacity(query.len());
-    for c in query.chars() {
+    cleaned.push_str(&query[..i]);
+
+    for c in query[i..].chars() {
         if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
             cleaned.push(c);
         } else {
