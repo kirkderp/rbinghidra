@@ -98,30 +98,34 @@ impl OutputGuard {
     }
 
     pub fn sweep(&self) {
-        let Ok(entries) = fs::read_dir(&self.overflow_dir) else {
-            return;
-        };
-        let now = SystemTime::now();
-        for entry in entries.flatten() {
-            let Ok(file_type) = entry.file_type() else {
-                continue;
+        let overflow_dir = self.overflow_dir.clone();
+        let ttl = self.ttl;
+        std::thread::spawn(move || {
+            let Ok(entries) = fs::read_dir(&overflow_dir) else {
+                return;
             };
-            if !file_type.is_file() {
-                continue;
+            let now = SystemTime::now();
+            for entry in entries.flatten() {
+                let Ok(file_type) = entry.file_type() else {
+                    continue;
+                };
+                if !file_type.is_file() {
+                    continue;
+                }
+                let name = entry.file_name();
+                let Some(name) = name.to_str() else { continue };
+                if !name.starts_with(OVERFLOW_PREFIX) {
+                    continue;
+                }
+                let Ok(meta) = entry.metadata() else { continue };
+                let Ok(modified) = meta.modified() else {
+                    continue;
+                };
+                if now.duration_since(modified).unwrap_or_default() > ttl {
+                    let _ = fs::remove_file(entry.path());
+                }
             }
-            let name = entry.file_name();
-            let Some(name) = name.to_str() else { continue };
-            if !name.starts_with(OVERFLOW_PREFIX) {
-                continue;
-            }
-            let Ok(meta) = entry.metadata() else { continue };
-            let Ok(modified) = meta.modified() else {
-                continue;
-            };
-            if now.duration_since(modified).unwrap_or_default() > self.ttl {
-                let _ = fs::remove_file(entry.path());
-            }
-        }
+        });
     }
 
     fn write_overflow(&self, label: &str, text: &str) -> ToolResult<OverflowSummary> {
