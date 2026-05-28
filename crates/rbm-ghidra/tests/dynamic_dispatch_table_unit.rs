@@ -34,7 +34,10 @@ fn dynamic_dispatch_table_script_constant() {
 
 #[test]
 fn dynamic_dispatch_table_schema_constant_pinned() {
-    assert_eq!(DYNAMIC_DISPATCH_TABLE_SCHEMA, "rbm.ghidra.dynamic_dispatch_table.v0");
+    assert_eq!(
+        DYNAMIC_DISPATCH_TABLE_SCHEMA,
+        "rbm.ghidra.dynamic_dispatch_table.v0"
+    );
 }
 
 #[test]
