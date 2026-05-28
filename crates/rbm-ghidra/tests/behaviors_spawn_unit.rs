@@ -86,6 +86,7 @@ fn behaviors_spawns_runner_parses_envelope_and_cleans_up() {
         let mut entries = tokio::fs::read_dir(mgr.project_dir(SHA_LS)).await.unwrap();
         let mut leftover = 0;
         while let Some(entry) = entries.next_entry().await.unwrap() {
+            #[allow(clippy::collapsible_if)]
             if let Some(name) = entry.file_name().to_str() {
                 if name.starts_with("behaviors_") && common::has_json_extension(name) {
                     leftover += 1;
@@ -177,6 +178,7 @@ fn behaviors_propagates_parse_error_for_garbage_envelope() {
         let mut entries = tokio::fs::read_dir(mgr.project_dir(SHA_LS)).await.unwrap();
         let mut leftover = 0;
         while let Some(entry) = entries.next_entry().await.unwrap() {
+            #[allow(clippy::collapsible_if)]
             if let Some(name) = entry.file_name().to_str() {
                 if name.starts_with("behaviors_") && common::has_json_extension(name) {
                     leftover += 1;
