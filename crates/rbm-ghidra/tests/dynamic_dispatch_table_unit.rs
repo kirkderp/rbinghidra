@@ -9,7 +9,7 @@ use rbm_ghidra::project::DYNAMIC_DISPATCH_TABLE_SCRIPT;
 mod common;
 use common::{make_manager, make_runtime};
 
-fn default_options() -> DynamicDispatchTableOptions<'static> {
+const fn default_options() -> DynamicDispatchTableOptions<'static> {
     DynamicDispatchTableOptions {
         table_count_global: "count",
         table_ptr_global: "ptr",
