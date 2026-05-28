@@ -27,22 +27,17 @@ fn make_context_api_slots_ctx(
     let analyze = tmp.path().join("analyzeHeadless");
 
     // Create a mock script that writes a predefined JSON output or a valid JSON object
-    let json_output = if let Some(val) = mock_output {
-        serde_json::to_string(val).unwrap()
-    } else {
-        "{}".to_string()
-    };
+    let json_output = mock_output.map_or_else(|| "{}".to_string(), |val| serde_json::to_string(val).unwrap());
 
     let mock_script = format!(
         r#"#!/bin/bash
 # Mock analyzeHeadless to write JSON to the expected output path
 for i in "$@"; do
     if [[ $i == *".json" ]]; then
-        echo '{}' > "$i"
+        echo '{json_output}' > "$i"
     fi
 done
-"#,
-        json_output
+"#
     );
     std::fs::write(&analyze, mock_script).unwrap();
 
@@ -67,7 +62,7 @@ fn touch_gpr(manager: &ProjectManager, sha: &str, project_name: &str) {
     std::fs::write(dir.join(format!("{project_name}.gpr")), b"").unwrap();
 }
 
-fn default_options() -> ContextApiSlotsOptions<'static> {
+const fn default_options() -> ContextApiSlotsOptions<'static> {
     ContextApiSlotsOptions {
         target_function: "target",
         init_function: "init",
