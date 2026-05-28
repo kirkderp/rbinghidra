@@ -1816,6 +1816,12 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "tool must exist")]
+    fn schema_for_panics_on_unknown_tool() {
+        schema_for("non_existent_tool_name");
+    }
+
+    #[test]
     fn high_volume_tools_expose_paging_schema() {
         for name in [
             "ghidra_list_functions",
