@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use rbm_core::CachePaths;
 use rbm_ghidra::constants::{ConstantsContext, ConstantsError, ConstantsOptions, scan_constants};
-use rbm_ghidra::project::PathValidationError;
 use rbm_ghidra::inspect::InspectError;
+use rbm_ghidra::project::PathValidationError;
 use rbm_ghidra::project::{CONSTANTS_SCRIPT, ProjectManager};
 use tempfile::TempDir;
 
