@@ -118,6 +118,9 @@ fn ttl_sweep_removes_stale_mcp_prefixed_files_only() {
         GuardedOutput::Inline(_) => panic!("expected overflow"),
     };
 
+    // the sweep is now asynchronous
+    thread::sleep(Duration::from_millis(50));
+
     assert!(!stale_path.exists(), "stale mcp_ file should be swept");
     assert!(fresh_path.exists(), "fresh overflow file should survive");
     assert!(bystander.exists(), "non-mcp_ file must be left alone");
