@@ -41,7 +41,11 @@ fn scan_anti_analysis_failing_runner_returns_headless_failed() {
 
         let scripts_dir = tmp.path().join("scripts");
         std::fs::create_dir_all(&scripts_dir).unwrap();
-        std::fs::write(scripts_dir.join(rbm_ghidra::project::ANTI_ANALYSIS_SCRIPT), b"").unwrap();
+        std::fs::write(
+            scripts_dir.join(rbm_ghidra::project::ANTI_ANALYSIS_SCRIPT),
+            b"",
+        )
+        .unwrap();
 
         let ctx = AntiAnalysisContext {
             manager: mgr.clone(),
@@ -78,7 +82,11 @@ fn scan_anti_analysis_returns_output_missing_when_runner_writes_nothing() {
 
         let scripts_dir = tmp.path().join("scripts");
         std::fs::create_dir_all(&scripts_dir).unwrap();
-        std::fs::write(scripts_dir.join(rbm_ghidra::project::ANTI_ANALYSIS_SCRIPT), b"").unwrap();
+        std::fs::write(
+            scripts_dir.join(rbm_ghidra::project::ANTI_ANALYSIS_SCRIPT),
+            b"",
+        )
+        .unwrap();
 
         let ctx = AntiAnalysisContext {
             manager: mgr.clone(),
@@ -127,7 +135,11 @@ fn scan_anti_analysis_spawns_runner_parses_envelope_and_cleans_up() {
 
         let scripts_dir = tmp.path().join("scripts");
         std::fs::create_dir_all(&scripts_dir).unwrap();
-        std::fs::write(scripts_dir.join(rbm_ghidra::project::ANTI_ANALYSIS_SCRIPT), b"").unwrap();
+        std::fs::write(
+            scripts_dir.join(rbm_ghidra::project::ANTI_ANALYSIS_SCRIPT),
+            b"",
+        )
+        .unwrap();
 
         let ctx = AntiAnalysisContext {
             manager: mgr.clone(),
@@ -165,7 +177,11 @@ fn scan_anti_analysis_propagates_parse_error_for_garbage_envelope() {
 
         let scripts_dir = tmp.path().join("scripts");
         std::fs::create_dir_all(&scripts_dir).unwrap();
-        std::fs::write(scripts_dir.join(rbm_ghidra::project::ANTI_ANALYSIS_SCRIPT), b"").unwrap();
+        std::fs::write(
+            scripts_dir.join(rbm_ghidra::project::ANTI_ANALYSIS_SCRIPT),
+            b"",
+        )
+        .unwrap();
 
         let ctx = AntiAnalysisContext {
             manager: mgr.clone(),
