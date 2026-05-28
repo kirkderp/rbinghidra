@@ -2,12 +2,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use rbm_ghidra::inspect::InspectError;
-use rbm_ghidra::project::{PathValidationError, ProjectManager, GO_METADATA_SCRIPT};
 use rbm_ghidra::go_metadata::{
-    DEFAULT_LIMIT, MAX_LIMIT, GO_METADATA_SCHEMA,
-    GoMetadataContext, GoMetadataError, GoMetadataResult, GoStringHit, GoFunctionHit, get_go_metadata,
+    DEFAULT_LIMIT, GO_METADATA_SCHEMA, GoFunctionHit, GoMetadataContext, GoMetadataError,
+    GoMetadataResult, GoStringHit, MAX_LIMIT, get_go_metadata,
 };
+use rbm_ghidra::inspect::InspectError;
+use rbm_ghidra::project::{GO_METADATA_SCRIPT, PathValidationError, ProjectManager};
 use rbm_ghidra::warm_path::WarmPathError;
 use tempfile::TempDir;
 
@@ -58,12 +58,8 @@ fn warm_path_error_flattens_into_go_metadata_error() {
         other => panic!("expected LockHeld, got {other:?}"),
     }
 
-    let e: GoMetadataError =
-        WarmPathError::ProjectFileMissing(PathBuf::from("/tmp/proj")).into();
-    assert!(
-        matches!(e, GoMetadataError::ProjectFileMissing(_)),
-        "{e:?}"
-    );
+    let e: GoMetadataError = WarmPathError::ProjectFileMissing(PathBuf::from("/tmp/proj")).into();
+    assert!(matches!(e, GoMetadataError::ProjectFileMissing(_)), "{e:?}");
 
     let e: GoMetadataError = WarmPathError::HeadlessFailed {
         exit_code: Some(7),
@@ -154,9 +150,7 @@ fn get_go_metadata_rejects_missing_scripts_dir() {
         let (tmp, mgr) = make_manager();
         let mut ctx = make_go_metadata_ctx(&tmp, mgr.clone());
         ctx.scripts_dir = tmp.path().join("does-not-exist");
-        let err = get_go_metadata(&ctx, "ls", None)
-            .await
-            .unwrap_err();
+        let err = get_go_metadata(&ctx, "ls", None).await.unwrap_err();
         assert!(
             matches!(
                 err,
@@ -176,13 +170,10 @@ fn get_go_metadata_rejects_missing_go_metadata_script() {
         let scripts = tmp.path().join("scripts-empty");
         std::fs::create_dir_all(&scripts).unwrap();
         ctx.scripts_dir = scripts;
-        let err = get_go_metadata(&ctx, "ls", None)
-            .await
-            .unwrap_err();
+        let err = get_go_metadata(&ctx, "ls", None).await.unwrap_err();
         match err {
             GoMetadataError::PathValidation(PathValidationError::ScriptMissing {
-                script,
-                ..
+                script, ..
             }) => {
                 assert_eq!(script, GO_METADATA_SCRIPT);
             }
@@ -198,9 +189,7 @@ fn get_go_metadata_rejects_missing_analyze_headless() {
         let (tmp, mgr) = make_manager();
         let mut ctx = make_go_metadata_ctx(&tmp, mgr.clone());
         ctx.analyze_headless = tmp.path().join("does-not-exist");
-        let err = get_go_metadata(&ctx, "ls", None)
-            .await
-            .unwrap_err();
+        let err = get_go_metadata(&ctx, "ls", None).await.unwrap_err();
         assert!(
             matches!(
                 err,
@@ -217,9 +206,7 @@ fn get_go_metadata_returns_inspect_not_found_for_unknown_binary() {
     rt.block_on(async {
         let (tmp, mgr) = make_manager();
         let ctx = make_go_metadata_ctx(&tmp, mgr.clone());
-        let err = get_go_metadata(&ctx, "missing", None)
-            .await
-            .unwrap_err();
+        let err = get_go_metadata(&ctx, "missing", None).await.unwrap_err();
         assert!(
             matches!(err, GoMetadataError::Inspect(InspectError::NotFound(_))),
             "{err:?}"
@@ -235,9 +222,7 @@ fn get_go_metadata_propagates_ambiguous_program_name() {
         let ctx = make_go_metadata_ctx(&tmp, mgr.clone());
         write_envelope(&mgr, SHA_LS, "ls", 1);
         write_envelope(&mgr, SHA_CAT, "ls", 1);
-        let err = get_go_metadata(&ctx, "ls", None)
-            .await
-            .unwrap_err();
+        let err = get_go_metadata(&ctx, "ls", None).await.unwrap_err();
         match err {
             GoMetadataError::Inspect(InspectError::Ambiguous { matches, .. }) => {
                 assert_eq!(matches, 2);
@@ -254,9 +239,7 @@ fn get_go_metadata_returns_project_file_missing_when_gpr_absent() {
         let (tmp, mgr) = make_manager();
         let ctx = make_go_metadata_ctx(&tmp, mgr.clone());
         write_envelope(&mgr, SHA_LS, "ls", 1);
-        let err = get_go_metadata(&ctx, "ls", None)
-            .await
-            .unwrap_err();
+        let err = get_go_metadata(&ctx, "ls", None).await.unwrap_err();
         assert!(
             matches!(err, GoMetadataError::ProjectFileMissing(_)),
             "{err:?}"
@@ -278,9 +261,7 @@ fn get_go_metadata_returns_lock_held_when_lock_is_held() {
             .try_lock_owned()
             .expect("test must hold the lock first");
 
-        let err = get_go_metadata(&ctx, "ls", None)
-            .await
-            .unwrap_err();
+        let err = get_go_metadata(&ctx, "ls", None).await.unwrap_err();
         match err {
             GoMetadataError::LockHeld { sha256 } => assert_eq!(sha256, SHA_LS),
             other => panic!("expected LockHeld, got {other:?}"),

@@ -5,8 +5,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rbm_core::CachePaths;
-use rbm_ghidra::project::{ProjectManager, GO_METADATA_SCRIPT};
 use rbm_ghidra::go_metadata::{GoMetadataContext, GoMetadataError, get_go_metadata};
+use rbm_ghidra::project::{GO_METADATA_SCRIPT, ProjectManager};
 use tempfile::TempDir;
 
 mod common;
@@ -122,9 +122,7 @@ fn get_go_metadata_failing_runner_returns_headless_failed() {
         fake_failing_analyze_headless(&analyze);
 
         let ctx = make_ctx(&tmp, mgr.clone(), analyze);
-        let err = get_go_metadata(&ctx, "ls", None)
-            .await
-            .unwrap_err();
+        let err = get_go_metadata(&ctx, "ls", None).await.unwrap_err();
         match err {
             GoMetadataError::HeadlessFailed { exit_code, stderr } => {
                 assert_eq!(exit_code, Some(9));
@@ -153,9 +151,7 @@ fn get_go_metadata_returns_output_missing_when_runner_writes_nothing() {
         fake_silent_analyze_headless(&analyze);
 
         let ctx = make_ctx(&tmp, mgr.clone(), analyze);
-        let err = get_go_metadata(&ctx, "ls", None)
-            .await
-            .unwrap_err();
+        let err = get_go_metadata(&ctx, "ls", None).await.unwrap_err();
         match err {
             GoMetadataError::OutputMissing { stdout, stderr: _ } => {
                 assert!(
@@ -183,9 +179,7 @@ fn get_go_metadata_propagates_parse_error_for_garbage_envelope() {
         fake_go_metadata_analyze_headless(&analyze, "this is not json");
 
         let ctx = make_ctx(&tmp, mgr.clone(), analyze);
-        let err = get_go_metadata(&ctx, "ls", None)
-            .await
-            .unwrap_err();
+        let err = get_go_metadata(&ctx, "ls", None).await.unwrap_err();
         assert!(matches!(err, GoMetadataError::Parse { .. }), "{err:?}");
 
         let mut entries = tokio::fs::read_dir(mgr.project_dir(SHA_LS)).await.unwrap();
