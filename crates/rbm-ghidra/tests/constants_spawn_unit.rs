@@ -6,6 +6,8 @@ use std::time::Duration;
 
 use rbm_core::CachePaths;
 use rbm_ghidra::constants::{ConstantsContext, ConstantsError, ConstantsOptions, scan_constants};
+use rbm_ghidra::project::PathValidationError;
+use rbm_ghidra::inspect::InspectError;
 use rbm_ghidra::project::{CONSTANTS_SCRIPT, ProjectManager};
 use tempfile::TempDir;
 
@@ -13,6 +15,7 @@ mod common;
 use common::{make_runtime, write_envelope, write_executable};
 
 const SHA_LS: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+const SHA_CAT: &str = "2222222222222222222222222222222222222222222222222222222222222222";
 
 fn fake_constants_analyze_headless(path: &Path, payload: &str) {
     let script = format!(
@@ -58,6 +61,7 @@ fn touch_gpr(manager: &ProjectManager, sha: &str, project_name: &str) {
 }
 
 #[test]
+#[allow(clippy::collapsible_if)]
 fn scan_constants_spawns_runner_parses_envelope_and_cleans_up() {
     let rt = make_runtime();
     rt.block_on(async {
@@ -167,6 +171,7 @@ fn scan_constants_returns_output_missing_when_runner_writes_nothing() {
 }
 
 #[test]
+#[allow(clippy::collapsible_if)]
 fn scan_constants_propagates_parse_error_for_garbage_envelope() {
     let rt = make_runtime();
     rt.block_on(async {
@@ -209,7 +214,6 @@ fn scan_constants_rejects_missing_scripts_dir() {
         let mut ctx = make_ctx(&tmp, mgr.clone(), tmp.path().join("analyzeHeadless"));
         ctx.scripts_dir = tmp.path().join("does-not-exist");
 
-        use rbm_ghidra::project::PathValidationError;
         let err = scan_constants(&ctx, "ls", ConstantsOptions::default())
             .await
             .unwrap_err();
@@ -236,7 +240,6 @@ fn scan_constants_rejects_missing_script() {
         std::fs::create_dir_all(&scripts).unwrap();
         ctx.scripts_dir = scripts;
 
-        use rbm_ghidra::project::PathValidationError;
         let err = scan_constants(&ctx, "ls", ConstantsOptions::default())
             .await
             .unwrap_err();
@@ -260,7 +263,6 @@ fn scan_constants_rejects_missing_analyze_headless() {
         let mgr = Arc::new(ProjectManager::new(&cache));
         let ctx = make_ctx(&tmp, mgr.clone(), tmp.path().join("does-not-exist"));
 
-        use rbm_ghidra::project::PathValidationError;
         let err = scan_constants(&ctx, "ls", ConstantsOptions::default())
             .await
             .unwrap_err();
@@ -285,7 +287,6 @@ fn scan_constants_returns_inspect_not_found_for_unknown_binary() {
         std::fs::write(&analyze, b"#!/bin/sh\nexit 0\n").unwrap();
         let ctx = make_ctx(&tmp, mgr.clone(), analyze);
 
-        use rbm_ghidra::inspect::InspectError;
         let err = scan_constants(&ctx, "missing", ConstantsOptions::default())
             .await
             .unwrap_err();
@@ -307,11 +308,9 @@ fn scan_constants_propagates_ambiguous_program_name() {
         std::fs::write(&analyze, b"#!/bin/sh\nexit 0\n").unwrap();
         let ctx = make_ctx(&tmp, mgr.clone(), analyze);
 
-        const SHA_CAT: &str = "2222222222222222222222222222222222222222222222222222222222222222";
         write_envelope(&mgr, SHA_LS, "ls", 1);
         write_envelope(&mgr, SHA_CAT, "ls", 1);
 
-        use rbm_ghidra::inspect::InspectError;
         let err = scan_constants(&ctx, "ls", ConstantsOptions::default())
             .await
             .unwrap_err();
