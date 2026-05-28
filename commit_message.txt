@@ -1,0 +1,5 @@
+🔒 Enforce memory safety in rbm-core
+
+🎯 What: Removed the `#![cfg_attr(test, allow(unsafe_code))]` directive from `crates/rbm-core/src/lib.rs`.
+⚠️ Risk: Allowing unsafe code locally can undermine Rust's memory safety guarantees during tests and potentially disguise memory-related bugs, creating subtle exploitable vulnerabilities.
+🛡️ Solution: Removed the explicit allowance of `unsafe_code` for the test environment from `crates/rbm-core/src/lib.rs`.
