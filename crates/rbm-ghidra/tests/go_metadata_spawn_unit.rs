@@ -81,7 +81,7 @@ fn get_go_metadata_spawns_runner_parses_envelope_and_cleans_up() {
         assert_eq!(result.cache_key, format!("sha256:{SHA_LS}"));
         assert_eq!(result.sha256, SHA_LS);
         assert_eq!(result.program_name, "ls");
-        assert_eq!(result.likely_go, true);
+        assert!(result.likely_go);
         assert_eq!(result.limit, 100);
         assert_eq!(result.go_versions.len(), 1);
         assert_eq!(result.go_versions[0].address, "0x1000");
