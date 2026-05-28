@@ -27,7 +27,10 @@ fn make_context_api_slots_ctx(
     let analyze = tmp.path().join("analyzeHeadless");
 
     // Create a mock script that writes a predefined JSON output or a valid JSON object
-    let json_output = mock_output.map_or_else(|| "{}".to_string(), |val| serde_json::to_string(val).unwrap());
+    let json_output = mock_output.map_or_else(
+        || "{}".to_string(),
+        |val| serde_json::to_string(val).unwrap(),
+    );
 
     let mock_script = format!(
         r#"#!/bin/bash
