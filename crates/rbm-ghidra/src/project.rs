@@ -422,6 +422,32 @@ impl HeadlessRunner {
     }
 
     async fn spawn_and_wait(&self, argv: Vec<OsString>) -> Result<HeadlessOutcome, HeadlessError> {
+        let allowed_flags = [
+            "-import",
+            "-overwrite",
+            "-loader",
+            "-processor",
+            "-cspec",
+            "-loader-baseAddr",
+            "-process",
+            "-noanalysis",
+            "-scriptPath",
+            "-postScript",
+        ];
+
+        for arg in &argv {
+            let s = arg.to_string_lossy();
+            if s.contains('\0') || (s.starts_with('-') && !allowed_flags.contains(&s.as_ref())) {
+                return Err(HeadlessError::Spawn {
+                    path: self.analyze_headless.clone(),
+                    source: std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("unsafe argument rejected: {s}"),
+                    ),
+                });
+            }
+        }
+
         let mut cmd = tokio::process::Command::new(&self.analyze_headless);
         cmd.args(&argv);
         cmd.stdin(std::process::Stdio::null());
