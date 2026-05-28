@@ -175,23 +175,21 @@ pub async fn get_cached_metadata(
             .ok_or_else(|| InspectError::NotFound(query.to_string()));
     }
     let all = list_cached_binaries(manager, None).await?;
-    let matches: Vec<CachedBinary> = all
-        .into_iter()
-        .filter(|c| c.program_name == trimmed)
-        .collect();
-    match matches.len() {
-        0 => Err(InspectError::NotFound(query.to_string())),
-        1 => {
-            let Some(cached) = matches.into_iter().next() else {
-                return Err(InspectError::NotFound(query.to_string()));
-            };
-            Ok(cached)
-        }
-        n => Err(InspectError::Ambiguous {
-            query: query.to_string(),
-            matches: n,
-        }),
-    }
+    let mut iter = all.into_iter().filter(|c| c.program_name == trimmed);
+    iter.next().map_or_else(
+        || Err(InspectError::NotFound(query.to_string())),
+        |cached| {
+            let additional_matches = iter.count();
+            if additional_matches == 0 {
+                Ok(cached)
+            } else {
+                Err(InspectError::Ambiguous {
+                    query: query.to_string(),
+                    matches: 1 + additional_matches,
+                })
+            }
+        },
+    )
 }
 
 /// Read one cached binary metadata record by SHA-256.
