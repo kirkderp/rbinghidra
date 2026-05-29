@@ -1,0 +1,3 @@
+## 2024-05-29 - Avoid Vec Allocation During Directory Iteration
+**Learning:** In `discover_project_name`, reading the entire directory into a `Vec<String>` before searching for a file extension caused unnecessary memory allocation. By checking the entry filename immediately during the streaming iteration with `tokio::fs::read_dir`, we can short-circuit and avoid allocating memory for all the directory entries.
+**Action:** When searching for a specific file in a directory, use streaming iteration and short-circuit when found rather than collecting all entries into a `Vec` first.
