@@ -76,7 +76,9 @@ pub async fn discover_project_name(project_dir: &Path) -> Result<String, Project
                 path: project_dir.to_path_buf(),
                 source: e,
             })?;
-    let mut names: Vec<String> = Vec::new();
+
+    // Bolt: Optimized directory traversal by streaming entries instead of collecting into a Vec,
+    // avoiding unnecessary memory allocations and enabling early exit upon finding the .gpr file.
     while let Some(entry) = entries
         .next_entry()
         .await
@@ -86,11 +88,16 @@ pub async fn discover_project_name(project_dir: &Path) -> Result<String, Project
         })?
     {
         if let Some(name) = entry.file_name().to_str() {
-            names.push(name.to_string());
+            if let Some(stem) = name.strip_suffix(".gpr") {
+                return Ok(stem.to_string());
+            } else if let Some(stem) = name.strip_suffix(".GPR") {
+                return Ok(stem.to_string());
+            }
         }
     }
-    extract_gpr_stem(&names)
-        .ok_or_else(|| ProjectDiscoveryError::ProjectFileMissing(project_dir.to_path_buf()))
+    Err(ProjectDiscoveryError::ProjectFileMissing(
+        project_dir.to_path_buf(),
+    ))
 }
 
 pub async fn discover_program_name(project_dir: &Path, preferred: &str) -> String {
