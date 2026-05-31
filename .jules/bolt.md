@@ -1,0 +1,3 @@
+## 2024-05-24 - Optimization: eliminate Vec allocation in tokio::fs::read_dir
+**Learning:** In the rbinghidra codebase, reading directory entries via `tokio::fs::read_dir` and accumulating them into a `Vec` before processing is an anti-pattern. Doing so forces unnecessary memory allocation when searching for specific files (like `.gpr`).
+**Action:** Always use streaming iteration and early returns to prevent unnecessary memory allocations when searching for a specific file.
