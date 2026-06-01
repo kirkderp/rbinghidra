@@ -76,7 +76,6 @@ pub async fn discover_project_name(project_dir: &Path) -> Result<String, Project
                 path: project_dir.to_path_buf(),
                 source: e,
             })?;
-    let mut names: Vec<String> = Vec::new();
     while let Some(entry) = entries
         .next_entry()
         .await
@@ -85,12 +84,16 @@ pub async fn discover_project_name(project_dir: &Path) -> Result<String, Project
             source: e,
         })?
     {
+        #[allow(clippy::collapsible_if)]
         if let Some(name) = entry.file_name().to_str() {
-            names.push(name.to_string());
+            if let Some(stem) = name.strip_suffix(".gpr") {
+                return Ok(stem.to_string());
+            }
         }
     }
-    extract_gpr_stem(&names)
-        .ok_or_else(|| ProjectDiscoveryError::ProjectFileMissing(project_dir.to_path_buf()))
+    Err(ProjectDiscoveryError::ProjectFileMissing(
+        project_dir.to_path_buf(),
+    ))
 }
 
 pub async fn discover_program_name(project_dir: &Path, preferred: &str) -> String {
@@ -122,14 +125,6 @@ fn index_line_program_name(line: &str) -> Option<&str> {
     }
     let (name, _) = rest.rsplit_once(':')?;
     if name.is_empty() { None } else { Some(name) }
-}
-
-#[must_use]
-pub fn extract_gpr_stem(entries: &[String]) -> Option<String> {
-    entries.iter().find_map(|name| {
-        name.strip_suffix(".gpr")
-            .map(std::string::ToString::to_string)
-    })
 }
 
 #[must_use]

@@ -1,0 +1,3 @@
+## 2025-02-23 - Avoid Vec allocations during async directory traversal
+**Learning:** `tokio::fs::read_dir` combined with collecting all entries into a `Vec` before processing is a performance and memory anti-pattern, especially when we only need the first matching item. When searching for a `.gpr` file, collecting filenames into `Vec<String>` caused unnecessary allocations.
+**Action:** Use streaming iteration (`while let Some(entry) = entries.next_entry().await`) and early returns instead of collecting entries. This minimizes memory allocation and speeds up file discovery by short-circuiting as soon as the target is found.
