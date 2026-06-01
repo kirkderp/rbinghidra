@@ -1,0 +1,4 @@
+## 2025-02-28 - DoS Vulnerability via Memory Allocation in Directory Traversal
+**Vulnerability:** `discover_project_name` used `tokio::fs::read_dir` to stream directory entries but blindly accumulated all file names into a `Vec<String>` before evaluating them. An attacker supplying a project directory with an excessive number of arbitrary files could exhaust server memory, leading to an application panic or DoS.
+**Learning:** Functions that parse directories to find specific files must use streaming iteration to process elements sequentially and return early. Collecting unbound directory contents directly into memory disables the safety of streaming primitives.
+**Prevention:** Avoid collecting `ReadDir` output into unbounded vectors. Perform logic within the `while let Some(entry) = entries.next_entry()` loop and return as soon as the target is found.
