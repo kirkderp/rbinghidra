@@ -228,7 +228,7 @@ pub use variables::{
 };
 pub use warm_path::{
     ProjectDiscoveryError, WarmPathError, WarmPathProduct, WarmPathRequest, cleanup_output,
-    discover_program_name, discover_project_name, execute_warm_path, extract_gpr_stem,
+    discover_program_name, discover_project_name, execute_warm_path,
     per_call_output_path, sanitize_query_for_filename,
 };
 pub use xrefs::{XrefEntry, XrefsContext, XrefsError, XrefsResult, list_xrefs};

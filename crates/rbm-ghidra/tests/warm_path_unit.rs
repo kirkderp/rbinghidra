@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use rbm_ghidra::warm_path::{
     ProjectDiscoveryError, WarmPathError, WarmPathRequest, discover_program_name,
-    discover_project_name, execute_warm_path, extract_gpr_stem, per_call_output_path,
+    discover_project_name, execute_warm_path, per_call_output_path,
     sanitize_query_for_filename,
 };
 use tempfile::TempDir;
@@ -11,22 +11,6 @@ mod common;
 use common::{make_manager, make_runtime, write_envelope, write_executable};
 
 const SHA_SAMPLE: &str = "1111111111111111111111111111111111111111111111111111111111111111";
-
-#[test]
-fn extract_gpr_stem_returns_first_match() {
-    let entries = vec![
-        "ls.rep".to_string(),
-        "ls.gpr".to_string(),
-        "decompile_main_1.json".to_string(),
-    ];
-    assert_eq!(extract_gpr_stem(&entries), Some("ls".to_string()));
-}
-
-#[test]
-fn extract_gpr_stem_returns_none_when_absent() {
-    let entries = vec!["ls.rep".to_string(), "functions.json".to_string()];
-    assert_eq!(extract_gpr_stem(&entries), None);
-}
 
 #[test]
 fn sanitize_query_for_filename_strips_punctuation_keeps_safe_chars() {
