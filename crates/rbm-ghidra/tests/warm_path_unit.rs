@@ -2,8 +2,7 @@ use std::path::PathBuf;
 
 use rbm_ghidra::warm_path::{
     ProjectDiscoveryError, WarmPathError, WarmPathRequest, discover_program_name,
-    discover_project_name, execute_warm_path, per_call_output_path,
-    sanitize_query_for_filename,
+    discover_project_name, execute_warm_path, per_call_output_path, sanitize_query_for_filename,
 };
 use tempfile::TempDir;
 

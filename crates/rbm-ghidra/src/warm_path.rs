@@ -92,7 +92,9 @@ pub async fn discover_project_name(project_dir: &Path) -> Result<String, Project
             return Ok(stem.to_string());
         }
     }
-    Err(ProjectDiscoveryError::ProjectFileMissing(project_dir.to_path_buf()))
+    Err(ProjectDiscoveryError::ProjectFileMissing(
+        project_dir.to_path_buf(),
+    ))
 }
 
 pub async fn discover_program_name(project_dir: &Path, preferred: &str) -> String {
