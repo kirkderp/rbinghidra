@@ -76,7 +76,6 @@ pub async fn discover_project_name(project_dir: &Path) -> Result<String, Project
                 path: project_dir.to_path_buf(),
                 source: e,
             })?;
-    let mut names: Vec<String> = Vec::new();
     while let Some(entry) = entries
         .next_entry()
         .await
@@ -85,12 +84,17 @@ pub async fn discover_project_name(project_dir: &Path) -> Result<String, Project
             source: e,
         })?
     {
-        if let Some(name) = entry.file_name().to_str() {
-            names.push(name.to_string());
+        if let Some(stem) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.strip_suffix(".gpr"))
+        {
+            return Ok(stem.to_string());
         }
     }
-    extract_gpr_stem(&names)
-        .ok_or_else(|| ProjectDiscoveryError::ProjectFileMissing(project_dir.to_path_buf()))
+    Err(ProjectDiscoveryError::ProjectFileMissing(
+        project_dir.to_path_buf(),
+    ))
 }
 
 pub async fn discover_program_name(project_dir: &Path, preferred: &str) -> String {
