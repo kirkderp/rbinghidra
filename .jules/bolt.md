@@ -1,0 +1,3 @@
+## 2024-05-24 - Avoid Vec allocation in tokio::fs::read_dir streaming
+**Learning:** Collecting directory entries into a `Vec` when searching for a specific file (like `.gpr` files) using `tokio::fs::read_dir` causes unnecessary memory allocations.
+**Action:** Use streaming iteration with `while let Some(entry) = entries.next_entry().await` and early returns to find the desired file without allocating an intermediate `Vec`.
