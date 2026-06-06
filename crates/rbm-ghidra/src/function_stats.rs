@@ -14,7 +14,7 @@ use crate::warm_path::{WarmPathProduct, WarmPathRequest, execute_warm_path};
 pub const FUNCTION_STATS_SCHEMA: &str = "rbm.ghidra.function_stats.v0";
 const OUTPUT_PREFIX: &str = "fn_stats";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct FunctionStatsResult {
     pub schema: String,
