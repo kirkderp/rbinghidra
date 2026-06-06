@@ -1,4 +1,5 @@
 #![doc = "Ghidra backend for rbinghidra: headless subprocess driver and ghidra_* tool implementations."]
+#![cfg_attr(test, allow(unsafe_code))]
 
 #[macro_export]
 macro_rules! from_warm_path {

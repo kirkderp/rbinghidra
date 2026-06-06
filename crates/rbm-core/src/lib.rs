@@ -1,4 +1,5 @@
 #![doc = "Shared types, errors, and utilities for the rbinghidra workspace."]
+#![cfg_attr(test, allow(unsafe_code))]
 
 pub mod config;
 pub(crate) mod env;
