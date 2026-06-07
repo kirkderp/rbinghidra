@@ -120,6 +120,42 @@ fn discover_program_name_uses_ghidra_idata_entry_when_import_suffixes_name() {
 }
 
 #[test]
+fn discover_program_name_prefers_exact_match_after_prefix_match() {
+    let rt = make_runtime();
+    rt.block_on(async {
+        let tmp = TempDir::new().unwrap();
+        let idata = tmp.path().join("sample.rep").join("idata");
+        std::fs::create_dir_all(&idata).unwrap();
+        std::fs::write(
+            idata.join("~index.dat"),
+            "VERSION=1\n  00000001:sample.bin.0:c0a823e5601235220094043875\n  00000002:sample:c0a823e5601235220094043860\n",
+        )
+        .unwrap();
+
+        let name = discover_program_name(tmp.path(), "sample").await;
+        assert_eq!(name, "sample");
+    });
+}
+
+#[test]
+fn discover_program_name_uses_first_entry_without_prefix_match() {
+    let rt = make_runtime();
+    rt.block_on(async {
+        let tmp = TempDir::new().unwrap();
+        let idata = tmp.path().join("sample.rep").join("idata");
+        std::fs::create_dir_all(&idata).unwrap();
+        std::fs::write(
+            idata.join("~index.dat"),
+            "VERSION=1\n  00000001:alpha:c0a823e5601235220094043875\n  00000002:beta:c0a823e5601235220094043860\n",
+        )
+        .unwrap();
+
+        let name = discover_program_name(tmp.path(), "sample").await;
+        assert_eq!(name, "alpha");
+    });
+}
+
+#[test]
 fn discover_program_name_falls_back_to_project_name_without_idata_index() {
     let rt = make_runtime();
     rt.block_on(async {
