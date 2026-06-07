@@ -106,16 +106,26 @@ pub async fn discover_program_name(project_dir: &Path, preferred: &str) -> Strin
         return preferred.to_string();
     };
     let text = String::from_utf8_lossy(&bytes);
-    let names: Vec<&str> = text.lines().filter_map(index_line_program_name).collect();
-    if names.contains(&preferred) {
-        return preferred.to_string();
+
+    let mut first_match: Option<&str> = None;
+    let mut prefix_match: Option<&str> = None;
+    for name in text.lines().filter_map(index_line_program_name) {
+        if name == preferred {
+            return preferred.to_string();
+        }
+        if prefix_match.is_none() && name.starts_with(preferred) {
+            prefix_match = Some(name);
+        }
+        if first_match.is_none() {
+            first_match = Some(name);
+        }
     }
-    if let Some(name) = names.iter().find(|name| name.starts_with(preferred)) {
-        return (*name).to_string();
+
+    if let Some(name) = prefix_match {
+        return name.to_string();
     }
-    names
-        .first()
-        .map_or_else(|| preferred.to_string(), |name| (*name).to_string())
+
+    first_match.unwrap_or(preferred).to_string()
 }
 
 fn index_line_program_name(line: &str) -> Option<&str> {
