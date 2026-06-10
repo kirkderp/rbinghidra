@@ -1,0 +1,3 @@
+## 2024-06-10 - Deferring allocations in directory traversal
+**Learning:** In hot loops like directory traversals (e.g., `list_cached_binaries`), eager `PathBuf` allocations via `entry.path()` and early `String` allocations can add significant memory pressure overhead. Deferring the allocation of `PathBuf` to error paths and checking `&str` references for high-frequency filters before `String` allocations yields a measurable performance boost.
+**Action:** When filtering streams or directory entries, prioritize extracting raw string slices (`&str`) to perform predicate checks first. Delay all heap allocations, including error context variables like `PathBuf` and final filtered state, until strictly necessary.
