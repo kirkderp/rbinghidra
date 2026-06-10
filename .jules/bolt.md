@@ -1,3 +1,0 @@
-## 2024-05-15 - Defer String Allocation During Stream Filtering
-**Learning:** During stream processing like `read_dir`, mapping directly to owned `String`s before applying filters (e.g., regex, structure checks) leads to substantial unnecessary memory allocations.
-**Action:** Always extract string references (e.g., using `to_str()` on `OsString` or `Path`) to perform high-frequency predicate checks first. Only allocate owned structures like `String` or `PathBuf` after the condition has matched.

@@ -98,11 +98,12 @@ pub async fn list_cached_binaries(
         .await
         .map_err(|e| InspectError::io(&ghidra_dir, e))?
     {
+        let path = entry.path();
         let file_type = match entry.file_type().await {
             Ok(ft) => ft,
             Err(err) => {
                 tracing::warn!(
-                    path = %entry.path().display(),
+                    path = %path.display(),
                     error = %err,
                     "ghidra cache: skipping entry whose file type could not be read"
                 );
@@ -112,15 +113,16 @@ pub async fn list_cached_binaries(
         if !file_type.is_dir() {
             continue;
         }
-        let file_name = entry.file_name();
-        let Some(name_str) = file_name.to_str() else {
+        let Some(name) = entry
+            .file_name()
+            .to_str()
+            .map(std::string::ToString::to_string)
+        else {
             continue;
         };
-        if !is_sha256_hex(name_str) {
+        if !is_sha256_hex(&name) {
             continue;
         }
-        // Defer String allocation until we know it passes the filter
-        let name = name_str.to_string();
         match read_cached_binary(manager, &name).await {
             Ok(Some(cached)) => {
                 if let Some(filter) = name_filter
