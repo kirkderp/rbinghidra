@@ -98,10 +98,10 @@ pub async fn list_cached_binaries(
         .await
         .map_err(|e| InspectError::io(&ghidra_dir, e))?
     {
-        let path = entry.path();
         let file_type = match entry.file_type().await {
             Ok(ft) => ft,
             Err(err) => {
+                let path = entry.path();
                 tracing::warn!(
                     path = %path.display(),
                     error = %err,
@@ -113,17 +113,14 @@ pub async fn list_cached_binaries(
         if !file_type.is_dir() {
             continue;
         }
-        let Some(name) = entry
-            .file_name()
-            .to_str()
-            .map(std::string::ToString::to_string)
-        else {
+        let file_name = entry.file_name();
+        let Some(name) = file_name.to_str() else {
             continue;
         };
-        if !is_sha256_hex(&name) {
+        if !is_sha256_hex(name) {
             continue;
         }
-        match read_cached_binary(manager, &name).await {
+        match read_cached_binary(manager, name).await {
             Ok(Some(cached)) => {
                 if let Some(filter) = name_filter
                     && !cached.program_name.contains(filter)
