@@ -155,6 +155,7 @@ pub fn per_call_output_path(project_dir: &Path, prefix: &str, query: &str) -> Pa
     project_dir.join(format!("{prefix}_{sanitized}_{stamp}.json"))
 }
 
+#[allow(clippy::missing_panics_doc)]
 #[must_use]
 pub fn sanitize_query_for_filename(query: &str) -> Cow<'_, str> {
     if query.is_empty() {
@@ -176,15 +177,14 @@ pub fn sanitize_query_for_filename(query: &str) -> Cow<'_, str> {
         return Cow::Borrowed(query);
     }
 
-    let mut cleaned = String::with_capacity(query.len());
-    for c in query.chars() {
-        if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
-            cleaned.push(c);
-        } else {
-            cleaned.push('_');
+    let mut cleaned = bytes.to_vec();
+    for b in &mut cleaned {
+        if !(b.is_ascii_alphanumeric() || *b == b'_' || *b == b'-' || *b == b'.') {
+            *b = b'_';
         }
     }
-    Cow::Owned(cleaned)
+    // We only put ASCII characters in the vector, so it's guaranteed to be valid UTF-8.
+    Cow::Owned(String::from_utf8(cleaned).expect("valid utf8"))
 }
 
 pub async fn cleanup_output(path: &Path) {
