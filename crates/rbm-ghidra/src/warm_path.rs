@@ -180,7 +180,7 @@ pub fn sanitize_query_for_filename(query: &str) -> Cow<'_, str> {
     // Operate directly on bytes to avoid UTF-8 boundary check overhead
     let mut cleaned_bytes = Vec::with_capacity(bytes.len());
     for &b in bytes {
-        if b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.'{
+        if b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.' {
             cleaned_bytes.push(b);
         } else {
             cleaned_bytes.push(b'_');
