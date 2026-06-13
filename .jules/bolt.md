@@ -1,0 +1,3 @@
+## 2024-06-13 - Optimize String Sanitization with Byte Operations
+**Learning:** In hot code paths that sanitize strings by substituting characters (like `sanitize_query_for_filename`), iterating over `String::chars()` incurs unnecessary UTF-8 boundary checking overhead. Operating directly on byte slices (`&[u8]`) and appending to a `Vec<u8>` is significantly faster because it bypasses these checks.
+**Action:** When replacing non-alphanumeric characters with ASCII safe fallbacks (e.g., `_`), use `query.as_bytes()`, iterate and push valid ASCII bytes, and finally use `String::from_utf8(cleaned).unwrap()` to safely convert back, avoiding `clippy::missing_panics_doc` issues by adding an explicit `#[allow(clippy::missing_panics_doc)]` attribute and explanatory comment.
