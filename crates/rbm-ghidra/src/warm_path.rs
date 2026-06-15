@@ -156,6 +156,7 @@ pub fn per_call_output_path(project_dir: &Path, prefix: &str, query: &str) -> Pa
 }
 
 #[must_use]
+#[allow(clippy::missing_panics_doc)]
 pub fn sanitize_query_for_filename(query: &str) -> Cow<'_, str> {
     if query.is_empty() {
         return Cow::Borrowed("query");
@@ -176,15 +177,15 @@ pub fn sanitize_query_for_filename(query: &str) -> Cow<'_, str> {
         return Cow::Borrowed(query);
     }
 
-    let mut cleaned = String::with_capacity(query.len());
-    for c in query.chars() {
-        if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
-            cleaned.push(c);
+    let mut cleaned_bytes = Vec::with_capacity(query.len());
+    for &b in bytes {
+        if b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.' {
+            cleaned_bytes.push(b);
         } else {
-            cleaned.push('_');
+            cleaned_bytes.push(b'_');
         }
     }
-    Cow::Owned(cleaned)
+    Cow::Owned(String::from_utf8(cleaned_bytes).unwrap())
 }
 
 pub async fn cleanup_output(path: &Path) {
