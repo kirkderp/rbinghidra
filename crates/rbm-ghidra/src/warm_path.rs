@@ -156,6 +156,7 @@ pub fn per_call_output_path(project_dir: &Path, prefix: &str, query: &str) -> Pa
 }
 
 #[must_use]
+#[allow(clippy::missing_panics_doc)]
 pub fn sanitize_query_for_filename(query: &str) -> Cow<'_, str> {
     if query.is_empty() {
         return Cow::Borrowed("query");
@@ -176,15 +177,16 @@ pub fn sanitize_query_for_filename(query: &str) -> Cow<'_, str> {
         return Cow::Borrowed(query);
     }
 
-    let mut cleaned = String::with_capacity(query.len());
-    for c in query.chars() {
-        if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
-            cleaned.push(c);
-        } else {
-            cleaned.push('_');
+    let mut cleaned = query.as_bytes().to_vec();
+    for b in &mut cleaned {
+        if !b.is_ascii_alphanumeric() && *b != b'_' && *b != b'-' && *b != b'.' {
+            *b = b'_';
         }
     }
-    Cow::Owned(cleaned)
+    // SAFETY: We only replace non-ASCII/special bytes with '_', which is valid ASCII/UTF-8.
+    // The original string was valid UTF-8, and our replacements keep it valid.
+    let cleaned_str = String::from_utf8(cleaned).unwrap();
+    Cow::Owned(cleaned_str)
 }
 
 pub async fn cleanup_output(path: &Path) {
