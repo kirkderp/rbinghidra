@@ -1,0 +1,3 @@
+## 2025-06-18 - Avoid .chars() iterator for simple string sanitization on hot paths
+**Learning:** In hot paths of the `rbinghidra` codebase (like file output sanitization), converting a string via `String::chars()` and repeatedly calling `.push(c)` on a `String` inside a loop incurs significant overhead due to UTF-8 boundary checks. For ASCII-based replacements (like replacing non-alphanumeric chars with `_`), `chars()` is noticeably slower than operating directly on the bytes.
+**Action:** When sanitizing strings where replacements and valid characters are all ASCII, use `query.as_bytes()`, iterate and push to a pre-allocated `Vec<u8>`, and finally convert back using `String::from_utf8(vec).expect(...)`. This avoids UTF-8 overhead and improves hot-path throughput.
