@@ -37,7 +37,7 @@ pub fn int_convert(value: &str) -> Result<IntConvertResult, String> {
         .or_else(|| trimmed.strip_prefix("0O"))
     {
         u64::from_str_radix(oct, 8).map_err(|e| format!("invalid octal: {e}"))?
-    } else if trimmed.chars().all(|c| c.is_ascii_digit()) {
+    } else if trimmed.as_bytes().iter().all(u8::is_ascii_digit) {
         trimmed
             .parse::<u64>()
             .map_err(|e| format!("invalid decimal: {e}"))?

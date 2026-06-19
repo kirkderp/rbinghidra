@@ -240,7 +240,7 @@ async fn file_mtime_unix(path: &Path) -> Option<i64> {
 
 #[must_use]
 pub fn is_sha256_hex(s: &str) -> bool {
-    s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit())
+    s.len() == 64 && s.as_bytes().iter().all(u8::is_ascii_hexdigit)
 }
 
 #[must_use]

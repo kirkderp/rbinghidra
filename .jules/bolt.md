@@ -1,0 +1,4 @@
+## 2024-06-19 - Fast-path performance optimizations for string sanitization
+
+**Learning:** When sanitizing strings or performing pure-ASCII validation on hot paths, operating directly on byte slices (`&[u8]`) instead of iterating over `String::chars()` avoids the overhead of UTF-8 boundary checks. This provides a measurable boost, especially when checking for common characters or hex digits multiple times. When allocating the cleaned string, `String::from_utf8` directly maps valid bytes back to a String instead of character-by-character appending.
+**Action:** Use `.as_bytes().iter().all(u8::is_ascii_... )` instead of `.chars().all(...)` for high-performance pure ASCII validation. Always prefer `query.as_bytes()` iteration over string chars to build byte vectors which can later be unsafely or `.expect()` converted if we know the bytes were pushed ASCII valid.
