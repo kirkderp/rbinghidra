@@ -103,16 +103,22 @@ pub fn resolve_max_hits(max_hits: Option<u64>) -> u64 {
 }
 
 fn normalize_hex_pattern(hex_pattern: &str) -> Option<String> {
-    let normalized: String = hex_pattern
-        .chars()
-        .filter(|c| !c.is_ascii_whitespace())
-        .collect();
-    if normalized.is_empty()
-        || !normalized.len().is_multiple_of(2)
-        || !normalized.chars().all(|c| c.is_ascii_hexdigit())
+    // Performance optimization: operate on bytes to bypass UTF-8 checks.
+    let bytes = hex_pattern.as_bytes();
+    let mut normalized_bytes = Vec::with_capacity(bytes.len());
+    for &b in bytes {
+        if !b.is_ascii_whitespace() {
+            normalized_bytes.push(b);
+        }
+    }
+    if normalized_bytes.is_empty()
+        || !normalized_bytes.len().is_multiple_of(2)
+        || !normalized_bytes.iter().all(u8::is_ascii_hexdigit)
     {
         return None;
     }
+    // We verified all bytes are ASCII hexdigits above, so this is guaranteed valid UTF-8.
+    let normalized = String::from_utf8(normalized_bytes).unwrap();
     Some(normalized.to_ascii_lowercase())
 }
 

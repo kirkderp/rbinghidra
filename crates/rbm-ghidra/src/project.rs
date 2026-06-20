@@ -523,6 +523,7 @@ pub fn project_name_for(binary: &Path) -> String {
 }
 
 #[must_use]
+#[allow(clippy::missing_panics_doc)]
 pub fn sanitize_project_name(input: &str) -> Cow<'_, str> {
     // Fast-path performance optimization: check if we need to sanitize first.
     // This avoids unnecessary string allocation for already-safe project names.
@@ -539,15 +540,19 @@ pub fn sanitize_project_name(input: &str) -> Cow<'_, str> {
         return Cow::Borrowed(input);
     }
 
-    let mut cleaned = String::with_capacity(input.len());
-    for c in input.chars() {
-        if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
-            cleaned.push(c);
+    // Performance optimization: Avoid UTF-8 boundary check overhead by
+    // operating directly on bytes, since we only care about ASCII chars.
+    let mut cleaned_bytes = Vec::with_capacity(input.len());
+    for &b in bytes {
+        if b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.' {
+            cleaned_bytes.push(b);
         } else {
-            cleaned.push('_');
+            cleaned_bytes.push(b'_');
         }
     }
-    Cow::Owned(cleaned)
+    // We only pushed ASCII characters (is_ascii_alphanumeric, '_', '-', '.'),
+    // so this is guaranteed to be valid UTF-8.
+    Cow::Owned(String::from_utf8(cleaned_bytes).unwrap())
 }
 
 /// Compute a SHA-256 digest for a regular file.

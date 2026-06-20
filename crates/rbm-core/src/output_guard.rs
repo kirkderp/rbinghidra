@@ -159,13 +159,13 @@ impl OutputGuard {
 }
 
 fn format_with_commas(n: usize) -> String {
-    let digits: Vec<char> = n.to_string().chars().collect();
-    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
-    for (i, c) in digits.iter().enumerate() {
+    let digits = n.to_string().into_bytes();
+    let mut out = Vec::with_capacity(digits.len() + digits.len() / 3);
+    for (i, &b) in digits.iter().enumerate() {
         if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(',');
+            out.push(b',');
         }
-        out.push(*c);
+        out.push(b);
     }
-    out
+    String::from_utf8(out).unwrap()
 }
