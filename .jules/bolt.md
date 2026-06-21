@@ -1,0 +1,3 @@
+## 2025-06-21 - Optimize ASCII string processing by operating on byte slices
+**Learning:** In Rust hot code paths, validating and sanitizing ASCII-only strings using `.chars().all(...)` or `.chars().collect()` introduces unnecessary UTF-8 decoding overhead.
+**Action:** When strings are guaranteed to be ASCII (such as hex strings or filenames), operate directly on byte slices using `.as_bytes()`, `.iter()`, and `Vec<u8>`, and safely reconstruct back into a `String` with `String::from_utf8`.

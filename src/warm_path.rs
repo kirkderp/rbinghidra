@@ -132,7 +132,7 @@ pub async fn discover_program_name(project_dir: &Path, preferred: &str) -> Strin
 fn index_line_program_name(line: &str) -> Option<&str> {
     let trimmed = line.trim();
     let (id, rest) = trimmed.split_once(':')?;
-    if id.is_empty() || !id.chars().all(|c| c.is_ascii_hexdigit()) {
+    if id.is_empty() || !id.as_bytes().iter().all(|&b| b.is_ascii_hexdigit()) {
         return None;
     }
     let (name, _) = rest.rsplit_once(':')?;
@@ -182,15 +182,20 @@ pub fn sanitize_query_for_filename(query: &str) -> Cow<'_, str> {
         return Cow::Borrowed(query);
     }
 
-    let mut cleaned = String::with_capacity(query.len());
-    for c in query.chars() {
-        if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
-            cleaned.push(c);
+    let mut cleaned = Vec::with_capacity(query.len());
+    for &b in bytes {
+        if b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.' {
+            cleaned.push(b);
         } else {
-            cleaned.push('_');
+            cleaned.push(b'_');
         }
     }
-    Cow::Owned(cleaned)
+    Cow::Owned(String::from_utf8(cleaned).unwrap_or_else(|_| {
+        query.replace(
+            |c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.'),
+            "_",
+        )
+    }))
 }
 
 fn query_digest_prefix(query: &str) -> String {

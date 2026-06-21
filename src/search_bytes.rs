@@ -103,17 +103,20 @@ pub fn resolve_max_hits(max_hits: Option<u64>) -> u64 {
 }
 
 fn normalize_hex_pattern(hex_pattern: &str) -> Option<String> {
-    let normalized: String = hex_pattern
-        .chars()
-        .filter(|c| !c.is_ascii_whitespace())
+    let mut normalized: Vec<u8> = hex_pattern
+        .as_bytes()
+        .iter()
+        .copied()
+        .filter(|b| !b.is_ascii_whitespace())
         .collect();
     if normalized.is_empty()
         || !normalized.len().is_multiple_of(2)
-        || !normalized.chars().all(|c| c.is_ascii_hexdigit())
+        || !normalized.iter().all(u8::is_ascii_hexdigit)
     {
         return None;
     }
-    Some(normalized.to_ascii_lowercase())
+    normalized.make_ascii_lowercase();
+    String::from_utf8(normalized).ok()
 }
 
 /// Search for a byte pattern in a cached Ghidra project.
