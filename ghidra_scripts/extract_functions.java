@@ -1,4 +1,5 @@
 // Extract the function list and write a JSON summary to the path passed as the first script argument.
+// The optional second script argument is the caller-visible binary path used in metadata.
 // @category rbinghidra
 
 import com.google.gson.Gson;
@@ -36,6 +37,10 @@ public class extract_functions extends GhidraScript {
             printerr("[extract_functions] no program loaded");
             throw new IllegalStateException("no program");
         }
+        String programPath = currentProgram.getExecutablePath();
+        if (args.length > 1 && !args[1].trim().isEmpty()) {
+            programPath = args[1];
+        }
 
         List<Map<String, Object>> functions = new ArrayList<>();
         int errorCount = 0;
@@ -53,7 +58,7 @@ public class extract_functions extends GhidraScript {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("schema", SCHEMA);
         result.put("program_name", currentProgram.getName());
-        result.put("program_path", currentProgram.getExecutablePath());
+        result.put("program_path", programPath);
         result.put("function_count", functions.size());
         result.put("error_count", errorCount);
         result.put("functions", functions);
