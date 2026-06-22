@@ -109,7 +109,7 @@ fn normalize_hex_pattern(hex_pattern: &str) -> Option<String> {
         .collect();
     if normalized.is_empty()
         || !normalized.len().is_multiple_of(2)
-        || !normalized.chars().all(|c| c.is_ascii_hexdigit())
+        || !normalized.as_bytes().iter().all(u8::is_ascii_hexdigit)
     {
         return None;
     }
