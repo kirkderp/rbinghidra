@@ -102,18 +102,27 @@ pub fn resolve_max_hits(max_hits: Option<u64>) -> u64 {
     max_hits.unwrap_or(DEFAULT_MAX_HITS).min(MAX_HITS_CAP)
 }
 
+#[allow(clippy::missing_panics_doc)]
 fn normalize_hex_pattern(hex_pattern: &str) -> Option<String> {
-    let normalized: String = hex_pattern
-        .chars()
-        .filter(|c| !c.is_ascii_whitespace())
+    // ⚡ Bolt: bypass UTF-8 decoding overhead for purely ASCII hex string validation
+    let normalized_bytes: Vec<u8> = hex_pattern
+        .as_bytes()
+        .iter()
+        .copied()
+        .filter(|b| !b.is_ascii_whitespace())
         .collect();
-    if normalized.is_empty()
-        || !normalized.len().is_multiple_of(2)
-        || !normalized.chars().all(|c| c.is_ascii_hexdigit())
+
+    if normalized_bytes.is_empty()
+        || !normalized_bytes.len().is_multiple_of(2)
+        || !normalized_bytes.iter().all(u8::is_ascii_hexdigit)
     {
         return None;
     }
-    Some(normalized.to_ascii_lowercase())
+
+    // mathematically guaranteed not to panic since all bytes are ascii hex digits
+    let mut normalized = String::from_utf8(normalized_bytes).unwrap();
+    normalized.make_ascii_lowercase();
+    Some(normalized)
 }
 
 /// Search for a byte pattern in a cached Ghidra project.
