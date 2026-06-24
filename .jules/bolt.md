@@ -1,0 +1,3 @@
+## 2024-06-24 - Optimizing ASCII string validation in hot paths
+**Learning:** In the `rbinghidra` Rust codebase, string validation (especially for hex strings/hashes like SHA256) occurs frequently in hot code paths parsing input. Using `.chars().all(...)` or `.chars().collect::<Vec<char>>()` incurs measurable UTF-8 boundary check overhead for every character.
+**Action:** When validating string patterns that are purely ASCII (e.g., hexadecimal hashes), use `.as_bytes().iter().all(u8::is_ascii_hexdigit)` instead of `.chars().all(|c| c.is_ascii_hexdigit())` to bypass UTF-8 decoding overhead entirely. Pass the function pointer directly to satisfy `clippy::redundant_closure`.

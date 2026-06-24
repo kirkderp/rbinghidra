@@ -394,7 +394,7 @@ async fn output_stamp(path: &Path) -> Result<Option<OutputStamp>, InspectError> 
 
 #[must_use]
 pub fn is_sha256_hex(s: &str) -> bool {
-    s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit())
+    s.len() == 64 && s.as_bytes().iter().all(u8::is_ascii_hexdigit)
 }
 
 #[must_use]

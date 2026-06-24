@@ -132,7 +132,7 @@ pub async fn discover_program_name(project_dir: &Path, preferred: &str) -> Strin
 fn index_line_program_name(line: &str) -> Option<&str> {
     let trimmed = line.trim();
     let (id, rest) = trimmed.split_once(':')?;
-    if id.is_empty() || !id.chars().all(|c| c.is_ascii_hexdigit()) {
+    if id.is_empty() || !id.as_bytes().iter().all(u8::is_ascii_hexdigit) {
         return None;
     }
     let (name, _) = rest.rsplit_once(':')?;
