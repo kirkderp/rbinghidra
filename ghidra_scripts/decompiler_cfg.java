@@ -145,9 +145,10 @@ public class decompiler_cfg extends GhidraScript {
         ArrayList<PcodeBlockBasic> basicBlocks = hf.getBasicBlocks();
         List<Map<String, Object>> blocks = new ArrayList<>();
         List<Map<String, Object>> edges = new ArrayList<>();
-        HashMap<Integer, PcodeBlockBasic> byIndex = new HashMap<>();
-        HashMap<Integer, LinkedHashSet<Integer>> predecessors = new HashMap<>();
-        HashMap<Integer, LinkedHashSet<Integer>> successors = new HashMap<>();
+        int capacity = (int) Math.ceil(basicBlocks.size() / 0.75f);
+        HashMap<Integer, PcodeBlockBasic> byIndex = new HashMap<>(capacity);
+        HashMap<Integer, LinkedHashSet<Integer>> predecessors = new HashMap<>(capacity);
+        HashMap<Integer, LinkedHashSet<Integer>> successors = new HashMap<>(capacity);
 
         for (PcodeBlockBasic block : basicBlocks) {
             if (block == null) {

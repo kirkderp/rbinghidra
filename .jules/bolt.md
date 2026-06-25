@@ -1,0 +1,3 @@
+## 2024-06-25 - HashMap Initialization in Ghidra Scripts
+**Learning:** Initializing `HashMap` instances without capacities in Java can incur a heavy ~20% performance penalty during initialization for large numbers of items (e.g., thousands of basic blocks) due to internal reallocation and rehashing. This is especially true for hot loops parsing Decompiler output.
+**Action:** Pre-size collections (like `HashMap` or `ArrayList`) using known counts (`basicBlocks.size() / 0.75f`) whenever possible to avoid dynamic resizing. Always use a microbenchmark in `run_in_bash_session` to validate the performance improvement of changes.

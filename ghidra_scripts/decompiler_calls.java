@@ -140,9 +140,10 @@ public class decompiler_calls extends GhidraScript {
         ArrayList<PcodeBlockBasic> basicBlocks = hf.getBasicBlocks();
         envelope.put("source_block_count", basicBlocks.size());
 
-        HashMap<Integer, PcodeBlockBasic> byIndex = new HashMap<>();
-        HashMap<Integer, LinkedHashSet<Integer>> predecessors = new HashMap<>();
-        HashMap<Integer, LinkedHashSet<Integer>> successors = new HashMap<>();
+        int capacity = (int) Math.ceil(basicBlocks.size() / 0.75f);
+        HashMap<Integer, PcodeBlockBasic> byIndex = new HashMap<>(capacity);
+        HashMap<Integer, LinkedHashSet<Integer>> predecessors = new HashMap<>(capacity);
+        HashMap<Integer, LinkedHashSet<Integer>> successors = new HashMap<>(capacity);
         for (PcodeBlockBasic block : basicBlocks) {
             if (block == null) {
                 continue;
