@@ -276,8 +276,8 @@ pub async fn execute_warm_path(req: WarmPathRequest<'_>) -> Result<WarmPathProdu
     script_args.extend(req.extra_script_args);
 
     let spec = ProcessSpec {
-        project_dir: project_dir.clone(),
-        project_name: project_name.clone(),
+        project_dir,
+        project_name,
         program_name,
         script_dir: runtime_scripts_dir,
         script_name: req.script_name.to_string(),
