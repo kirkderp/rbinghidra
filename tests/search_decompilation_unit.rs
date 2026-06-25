@@ -1,7 +1,6 @@
 use rbinghidra::search_decompilation::{
-    resolve_limit, DEFAULT_LIMIT, MAX_LIMIT,
-    resolve_context_lines, DEFAULT_CONTEXT_LINES, MAX_CONTEXT_LINES,
-    resolve_max_functions, DEFAULT_MAX_FUNCTIONS, MAX_MAX_FUNCTIONS,
+    DEFAULT_CONTEXT_LINES, DEFAULT_LIMIT, DEFAULT_MAX_FUNCTIONS, MAX_CONTEXT_LINES, MAX_LIMIT,
+    MAX_MAX_FUNCTIONS, resolve_context_lines, resolve_limit, resolve_max_functions,
 };
 
 #[test]
@@ -36,12 +35,18 @@ fn test_resolve_context_lines_some() {
 
 #[test]
 fn test_resolve_context_lines_some_above_max() {
-    assert_eq!(resolve_context_lines(Some(MAX_CONTEXT_LINES + 5)), MAX_CONTEXT_LINES);
+    assert_eq!(
+        resolve_context_lines(Some(MAX_CONTEXT_LINES + 5)),
+        MAX_CONTEXT_LINES
+    );
 }
 
 #[test]
 fn test_resolve_context_lines_some_max() {
-    assert_eq!(resolve_context_lines(Some(MAX_CONTEXT_LINES)), MAX_CONTEXT_LINES);
+    assert_eq!(
+        resolve_context_lines(Some(MAX_CONTEXT_LINES)),
+        MAX_CONTEXT_LINES
+    );
 }
 
 #[test]
@@ -56,12 +61,18 @@ fn test_resolve_max_functions_some() {
 
 #[test]
 fn test_resolve_max_functions_some_above_max() {
-    assert_eq!(resolve_max_functions(Some(MAX_MAX_FUNCTIONS + 100)), MAX_MAX_FUNCTIONS);
+    assert_eq!(
+        resolve_max_functions(Some(MAX_MAX_FUNCTIONS + 100)),
+        MAX_MAX_FUNCTIONS
+    );
 }
 
 #[test]
 fn test_resolve_max_functions_some_max() {
-    assert_eq!(resolve_max_functions(Some(MAX_MAX_FUNCTIONS)), MAX_MAX_FUNCTIONS);
+    assert_eq!(
+        resolve_max_functions(Some(MAX_MAX_FUNCTIONS)),
+        MAX_MAX_FUNCTIONS
+    );
 }
 
 #[test]
@@ -80,18 +91,14 @@ fn search_decompilation_result_serializes_to_stable_shape() {
         functions_scanned: 10,
         truncated: false,
         error_count: 0,
-        hits: vec![
-            rbinghidra::search_decompilation::DecompilationSearchHit {
-                function_name: "main".to_string(),
-                address: "0x100001234".to_string(),
-                signature: "int main(int argc, char **argv)".to_string(),
-                match_count: 1,
-                first_line: 10,
-                snippet: vec![
-                    "  printf(\"hello world\");".to_string(),
-                ],
-            },
-        ],
+        hits: vec![rbinghidra::search_decompilation::DecompilationSearchHit {
+            function_name: "main".to_string(),
+            address: "0x100001234".to_string(),
+            signature: "int main(int argc, char **argv)".to_string(),
+            match_count: 1,
+            first_line: 10,
+            snippet: vec!["  printf(\"hello world\");".to_string()],
+        }],
     };
 
     let value = serde_json::to_value(&result).unwrap();
@@ -112,7 +119,10 @@ fn search_decompilation_result_serializes_to_stable_shape() {
     assert_eq!(value["hits"].as_array().unwrap().len(), 1);
     assert_eq!(value["hits"][0]["function_name"], "main");
     assert_eq!(value["hits"][0]["address"], "0x100001234");
-    assert_eq!(value["hits"][0]["signature"], "int main(int argc, char **argv)");
+    assert_eq!(
+        value["hits"][0]["signature"],
+        "int main(int argc, char **argv)"
+    );
     assert_eq!(value["hits"][0]["match_count"], 1);
     assert_eq!(value["hits"][0]["first_line"], 10);
     assert_eq!(value["hits"][0]["snippet"][0], "  printf(\"hello world\");");
@@ -158,7 +168,9 @@ fn invalid_query_empty_rejected() {
     rt.block_on(async {
         let tmp = TempDir::new().unwrap();
         let ctx = make_ctx(&tmp);
-        let err = search_decompilation(&ctx, "/bin/ls", "", None, None, None, None).await.unwrap_err();
+        let err = search_decompilation(&ctx, "/bin/ls", "", None, None, None, None)
+            .await
+            .unwrap_err();
         assert!(
             matches!(err, SearchDecompilationError::EmptyQuery),
             "expected EmptyQuery, got {err:?}"
