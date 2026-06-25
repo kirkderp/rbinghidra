@@ -412,13 +412,13 @@ pub struct ImportSpec {
 }
 
 #[derive(Debug, Clone)]
-pub struct ProcessSpec {
-    pub project_dir: PathBuf,
-    pub project_name: String,
-    pub program_name: String,
-    pub script_dir: PathBuf,
-    pub script_name: String,
-    pub script_args: Vec<String>,
+pub struct ProcessSpec<'a> {
+    pub project_dir: &'a Path,
+    pub project_name: &'a str,
+    pub program_name: &'a str,
+    pub script_dir: &'a Path,
+    pub script_name: &'a str,
+    pub script_args: &'a [String],
 }
 
 #[derive(Debug, Clone)]
@@ -452,7 +452,10 @@ impl HeadlessRunner {
     ///
     /// Returns an error if the process cannot be spawned, times out, or its
     /// output cannot be collected.
-    pub async fn run_process(&self, spec: &ProcessSpec) -> Result<HeadlessOutcome, HeadlessError> {
+    pub async fn run_process(
+        &self,
+        spec: &ProcessSpec<'_>,
+    ) -> Result<HeadlessOutcome, HeadlessError> {
         self.spawn_and_wait(build_process_argv(spec)).await
     }
 
@@ -603,18 +606,18 @@ fn non_empty_opt(value: Option<&String>) -> Option<&str> {
 }
 
 #[must_use]
-pub fn build_process_argv(spec: &ProcessSpec) -> Vec<OsString> {
+pub fn build_process_argv(spec: &ProcessSpec<'_>) -> Vec<OsString> {
     let mut argv: Vec<OsString> = Vec::with_capacity(9 + spec.script_args.len());
     argv.push(spec.project_dir.as_os_str().to_os_string());
-    argv.push(OsString::from(&spec.project_name));
+    argv.push(OsString::from(spec.project_name));
     argv.push(OsString::from("-process"));
-    argv.push(OsString::from(&spec.program_name));
+    argv.push(OsString::from(spec.program_name));
     argv.push(OsString::from("-noanalysis"));
     argv.push(OsString::from("-scriptPath"));
     argv.push(spec.script_dir.as_os_str().to_os_string());
     argv.push(OsString::from("-postScript"));
-    argv.push(OsString::from(&spec.script_name));
-    for arg in &spec.script_args {
+    argv.push(OsString::from(spec.script_name));
+    for arg in spec.script_args {
         argv.push(OsString::from(arg));
     }
     argv

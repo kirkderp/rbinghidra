@@ -27,18 +27,18 @@ fn osstr(s: &str) -> OsString {
     OsString::from(s)
 }
 
-fn make_process_spec() -> ProcessSpec {
+fn make_process_spec<'a>(
+    project_dir: &'a std::path::Path,
+    script_dir: &'a std::path::Path,
+    script_args: &'a [String],
+) -> ProcessSpec<'a> {
     ProcessSpec {
-        project_dir: PathBuf::from("/tmp/proj"),
-        project_name: "ls".to_string(),
-        program_name: "ls".to_string(),
-        script_dir: PathBuf::from("/scripts"),
-        script_name: DECOMPILE_FUNCTION_SCRIPT.to_string(),
-        script_args: vec![
-            "/tmp/proj/decompile_main_42.json".to_string(),
-            "main".to_string(),
-            "decompile".to_string(),
-        ],
+        project_dir,
+        project_name: "ls",
+        program_name: "ls",
+        script_dir,
+        script_name: DECOMPILE_FUNCTION_SCRIPT,
+        script_args,
     }
 }
 
@@ -68,7 +68,14 @@ fn decompile_schema_constant_pinned() {
 
 #[test]
 fn build_process_argv_emits_full_invocation_in_order() {
-    let spec = make_process_spec();
+    let project_dir = PathBuf::from("/tmp/proj");
+    let script_dir = PathBuf::from("/scripts");
+    let script_args = vec![
+        "/tmp/proj/decompile_main_42.json".to_string(),
+        "main".to_string(),
+        "decompile".to_string(),
+    ];
+    let spec = make_process_spec(&project_dir, &script_dir, &script_args);
     let argv = build_process_argv(&spec);
     assert_eq!(
         argv,
@@ -91,7 +98,15 @@ fn build_process_argv_emits_full_invocation_in_order() {
 
 #[test]
 fn build_process_argv_omits_import_and_overwrite_flags() {
-    let argv = build_process_argv(&make_process_spec());
+    let project_dir = PathBuf::from("/tmp/proj");
+    let script_dir = PathBuf::from("/scripts");
+    let script_args = vec![
+        "/tmp/proj/decompile_main_42.json".to_string(),
+        "main".to_string(),
+        "decompile".to_string(),
+    ];
+    let spec = make_process_spec(&project_dir, &script_dir, &script_args);
+    let argv = build_process_argv(&spec);
     assert!(!argv.iter().any(|a| a == &osstr("-import")));
     assert!(!argv.iter().any(|a| a == &osstr("-overwrite")));
     assert!(argv.iter().any(|a| a == &osstr("-noanalysis")));
@@ -99,12 +114,14 @@ fn build_process_argv_omits_import_and_overwrite_flags() {
 
 #[test]
 fn build_process_argv_appends_extra_script_args_in_order() {
-    let mut spec = make_process_spec();
-    spec.script_args = vec![
+    let project_dir = PathBuf::from("/tmp/proj");
+    let script_dir = PathBuf::from("/scripts");
+    let script_args = vec![
         "/tmp/out.json".to_string(),
         "0x100003a40".to_string(),
         "extra".to_string(),
     ];
+    let spec = make_process_spec(&project_dir, &script_dir, &script_args);
     let argv = build_process_argv(&spec);
     let tail: Vec<&OsString> = argv.iter().rev().take(3).collect();
     assert_eq!(tail[0], &osstr("extra"));
