@@ -3,8 +3,10 @@
 #[macro_export]
 macro_rules! from_warm_path {
     ($err:ty) => {
-        impl From<$crate::warm_path::WarmPathError> for $err {
-            fn from(err: $crate::warm_path::WarmPathError) -> Self {
+        impl $err {
+            #[inline]
+            #[allow(clippy::missing_panics_doc)]
+            fn convert_from_warm_path(err: $crate::warm_path::WarmPathError) -> Self {
                 match err {
                     $crate::warm_path::WarmPathError::Inspect(e) => Self::Inspect(e),
                     $crate::warm_path::WarmPathError::LockHeld { sha256 } => {
@@ -25,6 +27,12 @@ macro_rules! from_warm_path {
                         Self::Io { path, source }
                     }
                 }
+            }
+        }
+
+        impl From<$crate::warm_path::WarmPathError> for $err {
+            fn from(err: $crate::warm_path::WarmPathError) -> Self {
+                Self::convert_from_warm_path(err)
             }
         }
     };
