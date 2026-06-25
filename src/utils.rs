@@ -50,14 +50,32 @@ mod tests {
 
     #[test]
     fn test_resolve_simplification_style_valid() {
-        assert_eq!(resolve_simplification_style(Some("normalize")), Some("normalize"));
-        assert_eq!(resolve_simplification_style(Some("register")), Some("register"));
-        assert_eq!(resolve_simplification_style(Some("firstpass")), Some("firstpass"));
-        assert_eq!(resolve_simplification_style(Some("paramid")), Some("paramid"));
+        assert_eq!(
+            resolve_simplification_style(Some("normalize")),
+            Some("normalize")
+        );
+        assert_eq!(
+            resolve_simplification_style(Some("register")),
+            Some("register")
+        );
+        assert_eq!(
+            resolve_simplification_style(Some("firstpass")),
+            Some("firstpass")
+        );
+        assert_eq!(
+            resolve_simplification_style(Some("paramid")),
+            Some("paramid")
+        );
 
         // With whitespace
-        assert_eq!(resolve_simplification_style(Some(" normalize ")), Some("normalize"));
-        assert_eq!(resolve_simplification_style(Some("\tregister\n")), Some("register"));
+        assert_eq!(
+            resolve_simplification_style(Some(" normalize ")),
+            Some("normalize")
+        );
+        assert_eq!(
+            resolve_simplification_style(Some("\tregister\n")),
+            Some("register")
+        );
     }
 
     #[test]
